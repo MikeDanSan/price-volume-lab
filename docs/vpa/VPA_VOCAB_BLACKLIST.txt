@@ -1,0 +1,23 @@
+wyckoff
+phase a
+phase b
+phase c
+phase d
+phase e
+spring
+upthrust
+vsa
+volume spread analysis
+smart money concepts
+smc
+order block
+breaker block
+fair value gap
+fvg
+liquidity grab
+liquidity sweep
+stop run
+ict
+market structure shift
+mss
+choch

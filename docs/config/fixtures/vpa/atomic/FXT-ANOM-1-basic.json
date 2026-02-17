@@ -1,0 +1,35 @@
+{
+    "fixtureId": "FXT-ANOM-1-basic",
+    "type": "atomic",
+    "targets": ["ANOM-1"],
+    "timeframe": "15m",
+    "configOverrides": {
+      "vol": { "avg_window_N": 5 },
+      "spread": { "avg_window_M": 5 }
+    },
+    "inputs": {
+      "bars": [
+        { "ts": "2026-02-17T14:00:00Z", "open": 100, "high": 101, "low": 99.8, "close": 100.2, "volume": 1000 },
+        { "ts": "2026-02-17T14:15:00Z", "open": 100.2, "high": 101.2, "low": 100.1, "close": 101.1, "volume": 950 },
+        { "ts": "2026-02-17T14:30:00Z", "open": 101.1, "high": 103.5, "low": 101.0, "close": 103.2, "volume": 500 }
+      ]
+    },
+    "expected": {
+      "signals": [
+        {
+          "id": "ANOM-1",
+          "class": "ANOMALY",
+          "ts": "2026-02-17T14:30:00Z",
+          "tf": "15m",
+          "name": "BigResultLittleEffort_TrapUpWarning",
+          "directionBias": "BEARISH_OR_WAIT",
+          "evidence": {
+            "candleType": "UP",
+            "spreadState": "WIDE",
+            "volState": "LOW"
+          }
+        }
+      ]
+    }
+  }
+  

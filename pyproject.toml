@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vpa-engine"
+version = "0.1.0"
+description = "Volume Price Analysis engine (Anna Coulling) — rules engine, backtest, paper trading"
+readme = "docs/PROJECT_CONTEXT.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "vpa-engine" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = ["pyyaml", "click"]
+
+[project.scripts]
+vpa = "cli.main:cli"
+
+[project.optional-dependencies]
+data = ["alpaca-py", "pandas"]
+backtest = ["pandas"]
+dev = ["pytest", "pytest-cov"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

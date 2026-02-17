@@ -1,0 +1,90 @@
+version: "0.1"
+source_of_truth: "Anna Couling — A Complete Guide to Volume Price Analysis (2013)"
+do_not_introduce_external_framework_terms: true
+
+shared_parameters:
+  vol_avg_window_N: 20
+  spread_avg_window_M: 20
+  trend_window_K: 5
+  setup_window_X: 5
+  vol_state_thresholds:
+    low_lt: 0.8
+    high_gt: 1.2
+    ultra_high_gt: 1.8
+  spread_state_thresholds:
+    narrow_lt: 0.8
+    wide_gt: 1.2
+
+context_gates:
+  CTX-1:
+    name: "Trend-location-first gate"
+    requirement: "trendLocation != UNKNOWN"
+    applies_to: ["ANOMALY", "PHASE_SIGNAL"]
+  CTX-2:
+    name: "Dominant alignment risk gate"
+    requirement: "dominantAlignment in {WITH, AGAINST}"
+  CTX-3:
+    name: "Congestion awareness gate"
+    requirement: "congestion.active is known"
+
+rules:
+  - id: "VAL-1"
+    type: "atomic_rule"
+    class: "VALIDATION"
+    direction_bias: "BULLISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: []
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "close > open"
+        - "spreadState == WIDE"
+        - "volState in {HIGH, ULTRA_HIGH}"
+    emits:
+      signal_event: "VALIDATION_BULL"
+    tests_required:
+      - "FXT-VAL-1-basic"
+
+  - id: "ANOM-1"
+    type: "atomic_rule"
+    class: "ANOMALY"
+    direction_bias: "BEARISH_OR_WAIT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "close > open"
+        - "spreadState == WIDE"
+        - "volState == LOW"
+    emits:
+      signal_event: "ANOMALY_TRAP_UP_WARNING"
+    tests_required:
+      - "FXT-ANOM-1-basic"
+
+setups:
+  - id: "ENTRY-LONG-1"
+    type: "setup"
+    direction: "LONG"
+    scope:
+      timeframes: ["primary"]
+      markets: ["any"]
+    gates_required: ["CTX-1", "CTX-3"]
+    sequence:
+      within_bars: "${shared_parameters.setup_window_X}"
+      steps:
+        - "TEST-SUP-1"
+        - "VAL-1"
+    invalidation:
+      any:
+        - "opposing_high_priority_anomaly"
+        - "context_gate_failure"
+        - "window_expired"
+    emits:
+      trade_intent_candidate: "ENTRY_OK_LONG"
+    tests_required:
+      - "FXT-ENTRY-LONG-1-seq"

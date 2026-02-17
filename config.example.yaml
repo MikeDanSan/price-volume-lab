@@ -1,0 +1,31 @@
+# vpa-engine config example. Copy to config.yaml and set values.
+# Last updated: 2026-02-17. See docs/RUNBOOK.md for usage.
+#
+# API keys are read from environment variables (not this file):
+#   APCA_API_KEY_ID       — Alpaca API key
+#   APCA_API_SECRET_KEY   — Alpaca API secret
+# Get free keys at https://alpaca.markets (paper trading account).
+
+symbol: SPY
+timeframe: "15m"
+
+data:
+  source: alpaca
+  bar_store_path: data/bars.db
+  # Free tier = IEX data; upgrade to Algo Trader Plus for SIP.
+
+backtest:
+  initial_cash: 100000
+  slippage_bps: 5
+  commission_per_share: 0
+  risk_pct_per_trade: 1.0
+
+execution:
+  state_path: data/paper_state.db
+  max_position_pct: 10
+  max_cash_per_trade_pct: 5
+  initial_cash: 100000
+
+journal:
+  path: data/journal.jsonl
+  echo_stdout: false

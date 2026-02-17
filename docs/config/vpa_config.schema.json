@@ -1,0 +1,108 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "VPA Config Schema",
+    "type": "object",
+    "required": ["version", "vol", "spread", "trend", "setup", "gates", "execution", "costs", "slippage", "risk"],
+    "properties": {
+      "version": { "type": "string" },
+  
+      "vol": {
+        "type": "object",
+        "required": ["avg_window_N", "thresholds"],
+        "properties": {
+          "avg_window_N": { "type": "integer", "minimum": 5, "maximum": 200 },
+          "thresholds": {
+            "type": "object",
+            "required": ["low_lt", "high_gt", "ultra_high_gt"],
+            "properties": {
+              "low_lt": { "type": "number" },
+              "high_gt": { "type": "number" },
+              "ultra_high_gt": { "type": "number" }
+            }
+          }
+        }
+      },
+  
+      "spread": {
+        "type": "object",
+        "required": ["avg_window_M", "thresholds"],
+        "properties": {
+          "avg_window_M": { "type": "integer", "minimum": 5, "maximum": 200 },
+          "thresholds": {
+            "type": "object",
+            "required": ["narrow_lt", "wide_gt"],
+            "properties": {
+              "narrow_lt": { "type": "number" },
+              "wide_gt": { "type": "number" }
+            }
+          }
+        }
+      },
+  
+      "trend": {
+        "type": "object",
+        "required": ["window_K"],
+        "properties": {
+          "window_K": { "type": "integer", "minimum": 2, "maximum": 200 }
+        }
+      },
+  
+      "setup": {
+        "type": "object",
+        "required": ["window_X"],
+        "properties": {
+          "window_X": { "type": "integer", "minimum": 1, "maximum": 200 }
+        }
+      },
+  
+      "gates": {
+        "type": "object",
+        "required": ["ctx1_trend_location_required", "ctx2_dominant_alignment_policy", "ctx3_congestion_awareness_required"],
+        "properties": {
+          "ctx1_trend_location_required": { "type": "boolean" },
+          "ctx2_dominant_alignment_policy": { "type": "string", "enum": ["ALLOW", "REDUCE_RISK", "DISALLOW"] },
+          "ctx3_congestion_awareness_required": { "type": "boolean" }
+        }
+      },
+  
+      "execution": {
+        "type": "object",
+        "required": ["signal_eval", "entry_timing", "intrabar_allowed"],
+        "properties": {
+          "signal_eval": { "type": "string", "enum": ["BAR_CLOSE_ONLY"] },
+          "entry_timing": { "type": "string", "enum": ["NEXT_BAR_OPEN"] },
+          "intrabar_allowed": { "type": "boolean" }
+        }
+      },
+  
+      "costs": {
+        "type": "object",
+        "required": ["fee_model", "fee_value"],
+        "properties": {
+          "fee_model": { "type": "string", "enum": ["BPS", "PER_TRADE"] },
+          "fee_value": { "type": "number", "minimum": 0 }
+        }
+      },
+  
+      "slippage": {
+        "type": "object",
+        "required": ["model", "value"],
+        "properties": {
+          "model": { "type": "string", "enum": ["BPS", "TICKS"] },
+          "value": { "type": "number", "minimum": 0 }
+        }
+      },
+  
+      "risk": {
+        "type": "object",
+        "required": ["risk_pct_per_trade", "max_concurrent_positions", "countertrend_multiplier"],
+        "properties": {
+          "risk_pct_per_trade": { "type": "number", "minimum": 0, "maximum": 0.05 },
+          "max_concurrent_positions": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "countertrend_multiplier": { "type": "number", "minimum": 0, "maximum": 1 },
+          "daily_loss_limit_pct": { "type": "number", "minimum": 0, "maximum": 0.2 }
+        }
+      }
+    }
+  }
+  

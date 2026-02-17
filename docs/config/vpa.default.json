@@ -1,0 +1,32 @@
+{
+    "version": "0.1",
+    "vol": {
+      "avg_window_N": 20,
+      "thresholds": { "low_lt": 0.8, "high_gt": 1.2, "ultra_high_gt": 1.8 }
+    },
+    "spread": {
+      "avg_window_M": 20,
+      "thresholds": { "narrow_lt": 0.8, "wide_gt": 1.2 }
+    },
+    "trend": { "window_K": 5 },
+    "setup": { "window_X": 5 },
+    "gates": {
+      "ctx1_trend_location_required": true,
+      "ctx2_dominant_alignment_policy": "REDUCE_RISK",
+      "ctx3_congestion_awareness_required": true
+    },
+    "execution": {
+      "signal_eval": "BAR_CLOSE_ONLY",
+      "entry_timing": "NEXT_BAR_OPEN",
+      "intrabar_allowed": false
+    },
+    "costs": { "fee_model": "BPS", "fee_value": 0 },
+    "slippage": { "model": "BPS", "value": 0 },
+    "risk": {
+      "risk_pct_per_trade": 0.005,
+      "max_concurrent_positions": 1,
+      "countertrend_multiplier": 0.5,
+      "daily_loss_limit_pct": 0.02
+    }
+  }
+  

@@ -1,0 +1,29 @@
+{
+    "fixtureId": "FXT-ENTRY-LONG-1-seq",
+    "type": "setup",
+    "targets": ["ENTRY-LONG-1"],
+    "timeframe": "15m",
+    "configOverrides": { "setup": { "window_X": 5 } },
+    "inputs": {
+      "events": [
+        { "ts": "2026-02-17T14:00:00Z", "tf": "15m", "signalId": "TEST-SUP-1" },
+        { "ts": "2026-02-17T14:15:00Z", "tf": "15m", "signalId": "VAL-1" }
+      ],
+      "context": {
+        "trendLocation": "BOTTOM",
+        "congestion": { "active": true }
+      }
+    },
+    "expected": {
+      "setupTransitions": [
+        { "state": "CANDIDATE", "at": "2026-02-17T14:00:00Z" },
+        { "state": "READY", "at": "2026-02-17T14:15:00Z" }
+      ],
+      "tradeIntentCandidate": {
+        "setupId": "ENTRY-LONG-1",
+        "direction": "LONG",
+        "status": "READY"
+      }
+    }
+  }
+  
