@@ -1,8 +1,9 @@
 """
 Data contracts for vpa-core: Bar, ContextWindow, Signal, TradePlan.
 
-Aligned with docs/DATA_MODEL.md. vpa-core consumes Bar/ContextWindow
-and produces Signal/TradePlan. No I/O; these are plain dataclasses.
+Canonical data models: docs/vpa-ck/vpa_system_spec.md §3.3.
+vpa-core consumes Bar/ContextWindow and produces Signal/TradePlan.
+No I/O; these are plain dataclasses.
 """
 
 from dataclasses import dataclass
@@ -33,12 +34,20 @@ class Bar:
     bar_index: int | None = None
 
     def spread(self) -> float:
-        """High minus low (range of the candle)."""
-        return self.high - self.low
+        """Candle body magnitude: |close - open|.
+
+        Per canonical glossary (vpa_glossary.md): spread is the candle body,
+        used as a proxy for 'result' in effort vs result.
+        """
+        return abs(self.close - self.open)
 
     def body(self) -> float:
-        """Absolute difference between open and close."""
+        """Alias for spread(): absolute difference between open and close."""
         return abs(self.close - self.open)
+
+    def bar_range(self) -> float:
+        """Full extent of the candle: high - low."""
+        return self.high - self.low
 
     def is_up(self) -> bool:
         """Close greater than open."""

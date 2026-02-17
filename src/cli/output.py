@@ -7,7 +7,7 @@ Every CLI command uses these formatters. Journal receives the same data.
 
 from vpa_core.contracts import Bar, ContextWindow, Signal, TradePlan
 from vpa_core.context import detect_context
-from vpa_core.features import close_location, spread
+from vpa_core.features import bar_range, close_location, spread
 from vpa_core.relative_volume import average_volume, relative_volume_for_bar
 
 
@@ -31,12 +31,13 @@ def format_bar_analysis(window: ContextWindow) -> str:
     ratio = current.volume / avg_vol if avg_vol > 0 else 0.0
     cloc = close_location(current)
     bar_spread = spread(current)
+    bar_rng = bar_range(current)
     bar_type = "up" if current.is_up() else "down"
 
     lines = [
         f"--- VPA Analysis: {window.symbol} {window.timeframe or ''} @ {current.timestamp.isoformat()} ---",
         f"Bar          : {bar_type} | O {current.open:.2f}  H {current.high:.2f}  L {current.low:.2f}  C {current.close:.2f}",
-        f"Spread       : {bar_spread:.2f}",
+        f"Spread (body): {bar_spread:.2f}  |  Range: {bar_rng:.2f}",
         f"Close loc.   : {cloc} third",
         f"Context      : {ctx}",
         f"Rel. volume  : {rel_vol.value} (current {_fmt_volume(current.volume)} vs 20-bar avg {_fmt_volume(avg_vol)} = {ratio:.2f}x)",

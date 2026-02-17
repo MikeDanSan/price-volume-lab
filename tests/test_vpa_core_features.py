@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from vpa_core.contracts import Bar, RelativeVolume
-from vpa_core.features import body, close_location, spread
+from vpa_core.features import bar_range, body, close_location, lower_wick, spread, upper_wick
 from vpa_core.relative_volume import (
     average_volume,
     classify_relative_volume,
@@ -13,14 +13,47 @@ from vpa_core.relative_volume import (
 )
 
 
-def test_spread() -> None:
+def test_spread_is_body() -> None:
+    """Spread = |close - open| per canonical glossary (candle body)."""
     bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
-    assert spread(bar) == 6.0
+    assert spread(bar) == 4.0
+
+
+def test_spread_equals_body() -> None:
+    """spread() and body() must return the same value."""
+    bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
+    assert spread(bar) == body(bar)
+
+
+def test_bar_range() -> None:
+    """bar_range = high - low (full candle extent)."""
+    bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
+    assert bar_range(bar) == 6.0
 
 
 def test_body() -> None:
     bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
     assert body(bar) == 4.0
+
+
+def test_upper_wick() -> None:
+    """Upper wick = high - max(open, close)."""
+    bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
+    assert upper_wick(bar) == 1.0  # 105 - 104
+
+
+def test_lower_wick() -> None:
+    """Lower wick = min(open, close) - low."""
+    bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
+    assert lower_wick(bar) == 1.0  # 100 - 99
+
+
+def test_bar_spread_method_matches_feature() -> None:
+    """Bar.spread() method must agree with features.spread() function."""
+    bar = Bar(100.0, 105.0, 99.0, 104.0, 1000, datetime.now(timezone.utc), "SPY")
+    assert bar.spread() == spread(bar)
+    assert bar.body() == body(bar)
+    assert bar.bar_range() == bar_range(bar)
 
 
 def test_close_location_upper() -> None:
