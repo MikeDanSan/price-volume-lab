@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-17 (Commit 14)
+**Last updated:** 2026-02-17 (Commit 15)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -30,6 +30,7 @@
 |----|------|-------------|---------------|---------------|--------|-------|
 | VAL-1 | Single-bar validation (bullish drive) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_val_1` | `tests/test_rule_engine.py::TestVAL1` (7 tests) | **OK** | Wide up bar + HIGH/ULTRA_HIGH volume. Evidence payload populated. No gate required. |
 | ANOM-1 | Big result, little effort (trap-up) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_anom_1` | `tests/test_rule_engine.py::TestANOM1` (6 tests) | **OK** | Wide up bar + LOW volume. Requires CTX-1 gate. Priority=2. |
+| ANOM-2 | Big effort, little result (absorption) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_anom_2` | `tests/test_rule_engine.py::TestANOM2` (9 tests) | **OK** | HIGH/ULTRA_HIGH volume + NARROW/NORMAL spread. Direction-agnostic. Requires CTX-1 gate. |
 | TEST-SUP-1 | Test of supply (pass) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_test_sup_1` | `tests/test_rule_engine.py::TestTESTSUP1` (7 tests) | **OK** | LOW volume + NARROW/NORMAL spread. Requires CTX-1 gate. Bar_low enriched by pipeline for stop placement. |
 
 ### 3.3 Atomic Rules (in VPA_ACTIONABLE_RULES.md, NOT yet in registry)
@@ -93,4 +94,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 5 OK (VAL-1, ANOM-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 20 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 6 OK (VAL-1, ANOM-1, ANOM-2, TEST-SUP-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 19 MISSING, 0 DRIFT, 0 EXTRA.**

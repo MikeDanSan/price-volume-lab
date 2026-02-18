@@ -12,6 +12,7 @@ No TradePlan, no orders, no sizing. That belongs to later stages.
 Canonical rules implemented:
     VAL-1      — Single-bar validation (bullish drive)
     ANOM-1     — "Big result, little effort" trap-up anomaly
+    ANOM-2     — "Big effort, little result" absorption/weakness
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 """
 
@@ -115,6 +116,49 @@ def detect_anom_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | 
 
 
 # ---------------------------------------------------------------------------
+# ANOM-2 — "Big effort, little result" (absorption/weakness)
+# Registry: volState in {HIGH, ULTRA_HIGH}, spreadState in {NARROW, NORMAL}
+# ---------------------------------------------------------------------------
+
+
+def detect_anom_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect ANOM-2: high volume but narrow/normal spread = absorption/weakness.
+
+    Conditions (from VPA_RULE_REGISTRY.yaml):
+        - volState in {HIGH, ULTRA_HIGH}
+        - spreadState in {NARROW, NORMAL}
+
+    Couling: high effort not producing expected result — insiders
+    selling/absorbing at this level. Direction-agnostic: works on
+    both up and down bars.
+
+    Requires CTX-1 gate (trend location must be known).
+    """
+    if features.vol_state not in (VolumeState.HIGH, VolumeState.ULTRA_HIGH):
+        return None
+    if features.spread_state not in (SpreadState.NARROW, SpreadState.NORMAL):
+        return None
+
+    return SignalEvent(
+        id="ANOM-2",
+        name="BigEffortLittleResult_Absorption",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.ANOMALY,
+        direction_bias="BEARISH_OR_WAIT",
+        priority=2,
+        evidence={
+            "spread_state": features.spread_state.value,
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+            "spread_rel": features.spread_rel,
+            "candle_type": features.candle_type.value,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 # Registry: volState == LOW, spreadState in {NARROW, NORMAL}
 # ---------------------------------------------------------------------------
@@ -163,6 +207,7 @@ def detect_test_sup_1(features: CandleFeatures, config: VPAConfig) -> SignalEven
 _RULE_DETECTORS = [
     detect_val_1,
     detect_anom_1,
+    detect_anom_2,
     detect_test_sup_1,
 ]
 

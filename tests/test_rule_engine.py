@@ -16,7 +16,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_test_sup_1, detect_val_1, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_test_sup_1, detect_val_1, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -147,6 +147,66 @@ class TestANOM1:
 
 
 # ---------------------------------------------------------------------------
+# ANOM-2: high volume + narrow/normal spread = absorption/weakness
+# ---------------------------------------------------------------------------
+
+
+class TestANOM2:
+    """FXT-ANOM-2-basic equivalent."""
+
+    def test_fires_on_high_vol_narrow_spread(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        signal = detect_anom_2(f, cfg)
+        assert signal is not None
+        assert signal.id == "ANOM-2"
+        assert signal.signal_class == SignalClass.ANOMALY
+        assert signal.direction_bias == "BEARISH_OR_WAIT"
+        assert signal.requires_context_gate is True
+
+    def test_fires_on_ultra_high_vol_normal_spread(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.ULTRA_HIGH, spread_state=SpreadState.NORMAL)
+        signal = detect_anom_2(f, cfg)
+        assert signal is not None
+        assert signal.id == "ANOM-2"
+
+    def test_fires_on_up_bar(self, cfg: VPAConfig) -> None:
+        """Direction-agnostic: fires on up bars too (selling into rally)."""
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        assert detect_anom_2(f, cfg) is not None
+
+    def test_fires_on_down_bar(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.DOWN, vol_state=VolumeState.HIGH, spread_state=SpreadState.NORMAL)
+        assert detect_anom_2(f, cfg) is not None
+
+    def test_no_fire_wide_spread(self, cfg: VPAConfig) -> None:
+        """Wide spread + high volume = VAL-1 territory, not absorption."""
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.WIDE)
+        assert detect_anom_2(f, cfg) is None
+
+    def test_no_fire_low_volume(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.LOW, spread_state=SpreadState.NARROW)
+        assert detect_anom_2(f, cfg) is None
+
+    def test_no_fire_average_volume(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.AVERAGE, spread_state=SpreadState.NARROW)
+        assert detect_anom_2(f, cfg) is None
+
+    def test_evidence_includes_candle_type(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW, vol_rel=1.5, spread_rel=0.6)
+        signal = detect_anom_2(f, cfg)
+        assert signal is not None
+        assert signal.evidence["candle_type"] == "UP"
+        assert signal.evidence["vol_rel"] == 1.5
+        assert signal.evidence["spread_rel"] == 0.6
+
+    def test_priority_matches_anom_1(self, cfg: VPAConfig) -> None:
+        """Both anomaly rules share priority=2."""
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        signal = detect_anom_2(f, cfg)
+        assert signal.priority == 2
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1: low volume + narrow/normal spread = supply test pass
 # ---------------------------------------------------------------------------
 
@@ -236,6 +296,12 @@ class TestEvaluateRules:
         assert len(evaluate_rules(f_anom, cfg)) == 1
         assert evaluate_rules(f_val, cfg)[0].id != evaluate_rules(f_anom, cfg)[0].id
 
+    def test_anom_2_collected(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        signals = evaluate_rules(f, cfg)
+        assert len(signals) == 1
+        assert signals[0].id == "ANOM-2"
+
     def test_test_sup_1_and_anom_1_mutual_exclusion(self, cfg: VPAConfig) -> None:
         """TEST-SUP-1 requires NARROW/NORMAL spread; ANOM-1 requires WIDE. Cannot co-fire."""
         f_test = _features(vol_state=VolumeState.LOW, spread_state=SpreadState.NARROW)
@@ -246,3 +312,14 @@ class TestEvaluateRules:
         assert "ANOM-1" not in test_ids
         assert "ANOM-1" in anom_ids
         assert "TEST-SUP-1" not in anom_ids
+
+    def test_val_1_and_anom_2_mutual_exclusion(self, cfg: VPAConfig) -> None:
+        """VAL-1 requires WIDE spread; ANOM-2 requires NARROW/NORMAL. Cannot co-fire."""
+        f_val = _features(candle_type=CandleType.UP, spread_state=SpreadState.WIDE, vol_state=VolumeState.HIGH)
+        f_anom2 = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        val_ids = {s.id for s in evaluate_rules(f_val, cfg)}
+        anom2_ids = {s.id for s in evaluate_rules(f_anom2, cfg)}
+        assert "VAL-1" in val_ids
+        assert "ANOM-2" not in val_ids
+        assert "ANOM-2" in anom2_ids
+        assert "VAL-1" not in anom2_ids

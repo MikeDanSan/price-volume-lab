@@ -66,6 +66,25 @@ rules:
     tests_required:
       - "FXT-ANOM-1-basic"
 
+  - id: "ANOM-2"
+    type: "atomic_rule"
+    class: "ANOMALY"
+    direction_bias: "BEARISH_OR_WAIT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "volState in {HIGH, ULTRA_HIGH}"
+        - "spreadState in {NARROW, NORMAL}"
+    emits:
+      signal_event: "ANOMALY_WEAKNESS_OR_ABSORPTION"
+    notes: "High effort not producing expected result. Insiders selling/absorbing at this level."
+    tests_required:
+      - "FXT-ANOM-2-basic"
+
   - id: "TEST-SUP-1"
     type: "atomic_rule"
     class: "TEST"
