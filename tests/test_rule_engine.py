@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_str_1, detect_test_sup_1, detect_val_1, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -320,6 +320,87 @@ class TestSTR1:
 
 
 # ---------------------------------------------------------------------------
+# WEAK-1: shooting star (large upper wick, small body, minimal lower wick)
+# ---------------------------------------------------------------------------
+
+
+class TestWEAK1:
+    """FXT-WEAK-1-basic equivalent."""
+
+    def _shooting_star(self, **kw) -> CandleFeatures:
+        """Classic shooting star: upper_wick=7, body=2, lower_wick=1, range=10."""
+        defaults = dict(
+            upper_wick=7.0, spread_val=2.0, lower_wick=1.0, range_val=10.0,
+        )
+        defaults.update(kw)
+        return _features(**defaults)
+
+    def test_fires_on_classic_shooting_star(self, cfg: VPAConfig) -> None:
+        f = self._shooting_star()
+        signal = detect_weak_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "WEAK-1"
+        assert signal.signal_class == SignalClass.WEAKNESS
+        assert signal.direction_bias == "BEARISH"
+        assert signal.requires_context_gate is True
+
+    def test_fires_on_up_bar_shooting_star(self, cfg: VPAConfig) -> None:
+        """Works on both UP and DOWN bars (wick structure is what matters)."""
+        f = self._shooting_star(candle_type=CandleType.UP)
+        assert detect_weak_1(f, cfg) is not None
+
+    def test_fires_at_boundary(self, cfg: VPAConfig) -> None:
+        """Exactly at threshold boundaries (60% wick, 33% body, 10% lower)."""
+        f = _features(
+            upper_wick=6.0, spread_val=3.3, lower_wick=1.0, range_val=10.0,
+        )
+        assert detect_weak_1(f, cfg) is not None
+
+    def test_no_fire_small_upper_wick(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=4.0, spread_val=2.0, lower_wick=1.0, range_val=10.0,
+        )
+        assert detect_weak_1(f, cfg) is None
+
+    def test_no_fire_large_body(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=6.0, spread_val=4.0, lower_wick=0.0, range_val=10.0,
+        )
+        assert detect_weak_1(f, cfg) is None
+
+    def test_no_fire_large_lower_wick(self, cfg: VPAConfig) -> None:
+        """Large lower wick pushes toward hammer territory, not shooting star."""
+        f = _features(
+            upper_wick=6.0, spread_val=1.0, lower_wick=3.0, range_val=10.0,
+        )
+        assert detect_weak_1(f, cfg) is None
+
+    def test_no_fire_zero_range(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=0.0, spread_val=0.0, lower_wick=0.0, range_val=0.0,
+        )
+        assert detect_weak_1(f, cfg) is None
+
+    def test_evidence_includes_ratios(self, cfg: VPAConfig) -> None:
+        f = self._shooting_star(vol_state=VolumeState.HIGH)
+        signal = detect_weak_1(f, cfg)
+        assert signal is not None
+        assert signal.evidence["upper_wick_ratio"] == 0.7
+        assert signal.evidence["body_ratio"] == 0.2
+        assert signal.evidence["lower_wick_ratio"] == 0.1
+        assert signal.evidence["vol_state"] == "HIGH"
+
+    def test_str_1_and_weak_1_mutual_exclusion(self, cfg: VPAConfig) -> None:
+        """A classic hammer cannot also be a shooting star and vice versa."""
+        hammer = _features(lower_wick=7.0, spread_val=2.0, upper_wick=1.0, range_val=10.0)
+        star = _features(upper_wick=7.0, spread_val=2.0, lower_wick=1.0, range_val=10.0)
+        assert detect_str_1(hammer, cfg) is not None
+        assert detect_weak_1(hammer, cfg) is None
+        assert detect_weak_1(star, cfg) is not None
+        assert detect_str_1(star, cfg) is None
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1: low volume + narrow/normal spread = supply test pass
 # ---------------------------------------------------------------------------
 
@@ -414,6 +495,12 @@ class TestEvaluateRules:
         signals = evaluate_rules(f, cfg)
         ids = {s.id for s in signals}
         assert "STR-1" in ids
+
+    def test_weak_1_collected(self, cfg: VPAConfig) -> None:
+        f = _features(upper_wick=7.0, spread_val=2.0, lower_wick=1.0, range_val=10.0)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "WEAK-1" in ids
 
     def test_anom_2_collected(self, cfg: VPAConfig) -> None:
         f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)

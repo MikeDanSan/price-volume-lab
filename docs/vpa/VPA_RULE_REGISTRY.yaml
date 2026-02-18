@@ -87,6 +87,27 @@ rules:
     tests_required:
       - "FXT-STR-1-basic"
 
+  - id: "WEAK-1"
+    type: "atomic_rule"
+    class: "WEAKNESS"
+    direction_bias: "BEARISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "candle_patterns.shooting_star"
+    conditions:
+      all:
+        - "upper_wick / range >= shooting_star.upper_wick_ratio_min"
+        - "spread / range <= shooting_star.body_ratio_max"
+        - "lower_wick / range <= shooting_star.lower_wick_ratio_max"
+        - "range > 0"
+    emits:
+      signal_event: "WEAKNESS_SHOOTING_STAR"
+    notes: "Shooting star: market pushed higher then falls back. In downtrends confirms weakness; after climax can be test of demand."
+    tests_required:
+      - "FXT-WEAK-1-basic"
+
   - id: "ANOM-2"
     type: "atomic_rule"
     class: "ANOMALY"
