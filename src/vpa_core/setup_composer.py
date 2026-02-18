@@ -9,6 +9,7 @@ This stage only matches sequences and tracks state.
 
 Currently implemented:
     ENTRY-LONG-1: TEST-SUP-1 -> VAL-1 within X bars.
+    ENTRY-LONG-2: STR-1 -> CONF-1 within X bars (hammer + confirmation).
 """
 
 from __future__ import annotations
@@ -98,26 +99,32 @@ class SetupComposer:
         return matches
 
     # ------------------------------------------------------------------
-    # ENTRY-LONG-1: TEST-SUP-1 -> VAL-1 within X bars
+    # Setup definitions (trigger signal -> completion signal)
     # ------------------------------------------------------------------
 
+    _SETUP_DEFS: dict[str, dict] = {
+        "ENTRY-LONG-1": {"trigger": "TEST-SUP-1", "completer": "VAL-1", "direction": "LONG"},
+        "ENTRY-LONG-2": {"trigger": "STR-1", "completer": "CONF-1", "direction": "LONG"},
+    }
+
     def _open_new_candidates(self, signals: list[SignalEvent], bar_index: int) -> None:
-        """Start new ENTRY-LONG-1 candidates from TEST-SUP-1 signals."""
+        """Start new candidates when a trigger signal appears."""
         for sig in signals:
-            if sig.id == "TEST-SUP-1":
-                already_tracking = any(
-                    c.setup_id == "ENTRY-LONG-1" and c.state == SetupState.CANDIDATE
-                    for c in self._candidates
-                )
-                if not already_tracking:
-                    self._candidates.append(SetupCandidate(
-                        setup_id="ENTRY-LONG-1",
-                        direction="LONG",
-                        state=SetupState.CANDIDATE,
-                        signals=[sig],
-                        started_at_bar=bar_index,
-                        expires_at_bar=bar_index + self._window_x,
-                    ))
+            for setup_id, defn in self._SETUP_DEFS.items():
+                if sig.id == defn["trigger"]:
+                    already_tracking = any(
+                        c.setup_id == setup_id and c.state == SetupState.CANDIDATE
+                        for c in self._candidates
+                    )
+                    if not already_tracking:
+                        self._candidates.append(SetupCandidate(
+                            setup_id=setup_id,
+                            direction=defn["direction"],
+                            state=SetupState.CANDIDATE,
+                            signals=[sig],
+                            started_at_bar=bar_index,
+                            expires_at_bar=bar_index + self._window_x,
+                        ))
 
     def _check_completions(self, signals: list[SignalEvent], bar_index: int) -> list[SetupMatch]:
         """Check if any active candidates complete with this bar's signals."""
@@ -125,19 +132,21 @@ class SetupComposer:
         for candidate in self._candidates:
             if candidate.state != SetupState.CANDIDATE:
                 continue
-            if candidate.setup_id == "ENTRY-LONG-1":
-                for sig in signals:
-                    if sig.id == "VAL-1":
-                        candidate.signals.append(sig)
-                        candidate.state = SetupState.READY
-                        matches.append(SetupMatch(
-                            setup_id=candidate.setup_id,
-                            direction=candidate.direction,
-                            signals=list(candidate.signals),
-                            matched_at_bar=bar_index,
-                            tf=sig.tf,
-                        ))
-                        break
+            defn = self._SETUP_DEFS.get(candidate.setup_id)
+            if defn is None:
+                continue
+            for sig in signals:
+                if sig.id == defn["completer"]:
+                    candidate.signals.append(sig)
+                    candidate.state = SetupState.READY
+                    matches.append(SetupMatch(
+                        setup_id=candidate.setup_id,
+                        direction=candidate.direction,
+                        signals=list(candidate.signals),
+                        matched_at_bar=bar_index,
+                        tf=sig.tf,
+                    ))
+                    break
         return matches
 
     def _expire_candidates(self, bar_index: int) -> None:
@@ -148,12 +157,13 @@ class SetupComposer:
         self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
 
     def _invalidate_candidates(self, signals: list[SignalEvent]) -> None:
-        """Invalidate candidates if opposing high-priority anomaly appears."""
-        has_opposing_anomaly = any(
-            sig.signal_class == SignalClass.ANOMALY and sig.priority >= 2
+        """Invalidate candidates if opposing anomaly or avoidance signal appears."""
+        should_invalidate_longs = any(
+            (sig.signal_class == SignalClass.ANOMALY and sig.priority >= 2)
+            or sig.signal_class == SignalClass.AVOIDANCE
             for sig in signals
         )
-        if has_opposing_anomaly:
+        if should_invalidate_longs:
             for candidate in self._candidates:
                 if candidate.state == SetupState.CANDIDATE and candidate.direction == "LONG":
                     candidate.state = SetupState.INVALIDATED

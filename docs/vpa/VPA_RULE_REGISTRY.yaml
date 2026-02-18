@@ -216,3 +216,27 @@ setups:
       trade_intent_candidate: "ENTRY_OK_LONG"
     tests_required:
       - "FXT-ENTRY-LONG-1-seq"
+
+  - id: "ENTRY-LONG-2"
+    type: "setup"
+    direction: "LONG"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    sequence:
+      within_bars: "${shared_parameters.setup_window_X}"
+      steps:
+        - "STR-1"
+        - "CONF-1"
+    invalidation:
+      any:
+        - "opposing_high_priority_anomaly"
+        - "AVOID-NEWS-1"
+        - "window_expired"
+    stop_placement: "below hammer wick (first signal bar_low)"
+    emits:
+      trade_intent_candidate: "ENTRY_OK_LONG"
+    notes: "Couling hammer reversal: STR-1 detected, wait for positive response (CONF-1). Stop below hammer wick."
+    tests_required:
+      - "FXT-ENTRY-LONG-2-seq"

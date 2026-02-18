@@ -1,6 +1,7 @@
-"""Tests for Setup Composer: ENTRY-LONG-1 sequence matching.
+"""Tests for Setup Composer: sequence matching.
 
-FXT-ENTRY-LONG-1-seq equivalent: TEST-SUP-1 -> VAL-1 within X bars.
+FXT-ENTRY-LONG-1-seq: TEST-SUP-1 -> VAL-1 within X bars.
+FXT-ENTRY-LONG-2-seq: STR-1 -> CONF-1 within X bars.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -67,6 +68,48 @@ def _val_1(bar_offset: int = 0) -> SignalEvent:
         direction_bias="BULLISH",
         priority=1,
         evidence={"vol_state": "HIGH", "spread_state": "WIDE"},
+        requires_context_gate=False,
+    )
+
+
+def _str_1(bar_offset: int = 0) -> SignalEvent:
+    return SignalEvent(
+        id="STR-1",
+        name="Hammer_SellingAbsorbed",
+        tf="15m",
+        ts=TS + timedelta(minutes=bar_offset * 15),
+        signal_class=SignalClass.STRENGTH,
+        direction_bias="BULLISH",
+        priority=2,
+        evidence={"lower_wick_ratio": 0.7, "bar_low": 98.0},
+        requires_context_gate=True,
+    )
+
+
+def _conf_1(bar_offset: int = 0) -> SignalEvent:
+    return SignalEvent(
+        id="CONF-1",
+        name="PositiveResponse_Confirmation",
+        tf="15m",
+        ts=TS + timedelta(minutes=bar_offset * 15),
+        signal_class=SignalClass.CONFIRMATION,
+        direction_bias="BULLISH",
+        priority=3,
+        evidence={"candle_type": "UP", "vol_state": "AVERAGE"},
+        requires_context_gate=False,
+    )
+
+
+def _avoid_news_1(bar_offset: int = 0) -> SignalEvent:
+    return SignalEvent(
+        id="AVOID-NEWS-1",
+        name="LongLeggedDoji_Manipulation",
+        tf="15m",
+        ts=TS + timedelta(minutes=bar_offset * 15),
+        signal_class=SignalClass.AVOIDANCE,
+        direction_bias="NEUTRAL",
+        priority=0,
+        evidence={},
         requires_context_gate=False,
     )
 
@@ -199,3 +242,102 @@ class TestDuplicates:
         composer.process_signals([_test_sup_1()], bar_index=0, context=ctx)
         composer.process_signals([_test_sup_1(1)], bar_index=1, context=ctx)
         assert composer.active_candidates == 1
+
+
+# ---------------------------------------------------------------------------
+# ENTRY-LONG-2: STR-1 -> CONF-1 (hammer + confirmation)
+# ---------------------------------------------------------------------------
+
+
+class TestEntryLong2Complete:
+    """STR-1 on bar N, CONF-1 on bar N+k (k <= window_X) -> READY."""
+
+    def test_immediate_follow(self, composer: SetupComposer) -> None:
+        ctx = _context()
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+        assert composer.active_candidates == 1
+
+        matches = composer.process_signals([_conf_1(1)], bar_index=1, context=ctx)
+        assert len(matches) == 1
+        assert matches[0].setup_id == "ENTRY-LONG-2"
+        assert matches[0].direction == "LONG"
+        assert len(matches[0].signals) == 2
+        assert matches[0].signals[0].id == "STR-1"
+        assert matches[0].signals[1].id == "CONF-1"
+        assert matches[0].matched_at_bar == 1
+
+    def test_delayed_follow_within_window(self, composer: SetupComposer, cfg: VPAConfig) -> None:
+        ctx = _context()
+        window = cfg.setup.window_X
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+
+        for i in range(1, window):
+            assert composer.process_signals([], bar_index=i, context=ctx) == []
+
+        matches = composer.process_signals([_conf_1(window)], bar_index=window, context=ctx)
+        assert len(matches) == 1
+        assert matches[0].setup_id == "ENTRY-LONG-2"
+
+    def test_evidence_preserved(self, composer: SetupComposer) -> None:
+        """The hammer's bar_low is carried through for stop placement."""
+        ctx = _context()
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+        matches = composer.process_signals([_conf_1(1)], bar_index=1, context=ctx)
+        assert matches[0].signals[0].evidence["bar_low"] == 98.0
+
+
+class TestEntryLong2Expiration:
+    def test_expired_after_window(self, composer: SetupComposer, cfg: VPAConfig) -> None:
+        ctx = _context()
+        window = cfg.setup.window_X
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+
+        for i in range(1, window + 1):
+            composer.process_signals([], bar_index=i, context=ctx)
+
+        matches = composer.process_signals([_conf_1(window + 1)], bar_index=window + 1, context=ctx)
+        assert matches == []
+        assert composer.active_candidates == 0
+
+
+class TestEntryLong2Invalidation:
+    def test_anomaly_invalidates(self, composer: SetupComposer) -> None:
+        ctx = _context()
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+        composer.process_signals([_anom_high_priority(1)], bar_index=1, context=ctx)
+        assert composer.active_candidates == 0
+
+    def test_avoidance_invalidates(self, composer: SetupComposer) -> None:
+        """AVOID-NEWS-1 invalidates all LONG candidates."""
+        ctx = _context()
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+        composer.process_signals([_avoid_news_1(1)], bar_index=1, context=ctx)
+        assert composer.active_candidates == 0
+
+
+class TestEntryLong2NoDuplicate:
+    def test_second_str_1_no_duplicate(self, composer: SetupComposer) -> None:
+        ctx = _context()
+        composer.process_signals([_str_1()], bar_index=0, context=ctx)
+        composer.process_signals([_str_1(1)], bar_index=1, context=ctx)
+        el2_candidates = sum(
+            1 for c in composer._candidates
+            if c.setup_id == "ENTRY-LONG-2"
+        )
+        assert el2_candidates == 1
+
+
+class TestBothSetupsIndependent:
+    def test_both_setups_can_be_active(self, composer: SetupComposer) -> None:
+        """ENTRY-LONG-1 and ENTRY-LONG-2 track independently."""
+        ctx = _context()
+        composer.process_signals([_test_sup_1(), _str_1()], bar_index=0, context=ctx)
+        assert composer.active_candidates == 2
+
+    def test_both_setups_can_complete_same_bar(self, composer: SetupComposer) -> None:
+        """Both setups complete when VAL-1 + CONF-1 arrive together."""
+        ctx = _context()
+        composer.process_signals([_test_sup_1(), _str_1()], bar_index=0, context=ctx)
+        matches = composer.process_signals([_val_1(1), _conf_1(1)], bar_index=1, context=ctx)
+        ids = {m.setup_id for m in matches}
+        assert ids == {"ENTRY-LONG-1", "ENTRY-LONG-2"}

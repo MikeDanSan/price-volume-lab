@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-18 (Commit 19)
+**Last updated:** 2026-02-18 (Commit 20)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -68,7 +68,7 @@
 | ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
 |----|------|-------------|---------------|---------------|--------|-------|
 | ENTRY-SHORT-1 | Post-distribution markdown | VPA_ACTIONABLE_RULES §10 | — | — | **MISSING** | NOT IN REGISTRY. |
-| ENTRY-LONG-2 | Reversal long (hammer + confirm) | VPA_ACTIONABLE_RULES §10 | — | — | **MISSING** | NOT IN REGISTRY. |
+| ENTRY-LONG-2 | Reversal long (hammer + confirm) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/setup_composer.py::SetupComposer` | `tests/test_setup_composer.py` (9 tests) | **OK** | Sequence: STR-1 → CONF-1 within window_X bars. Stop below hammer wick. AVOID-NEWS-1 invalidates. |
 | ENTRY-SHORT-2 | Reversal short (selling climax) | VPA_ACTIONABLE_RULES §10 | — | — | **MISSING** | NOT IN REGISTRY. |
 
 ### 3.6 EXTRA signals (in code, not in registry)
@@ -98,4 +98,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 10 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 15 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 11 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1, ENTRY-LONG-2), 1 PARTIAL (CTX-2), 14 MISSING, 0 DRIFT, 0 EXTRA.**

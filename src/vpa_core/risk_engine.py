@@ -40,13 +40,14 @@ def _compute_stop(match: SetupMatch, current_price: float) -> float:
     """Compute stop level based on setup type.
 
     ENTRY-LONG-1: stop below the test bar's low (first signal's evidence).
+    ENTRY-LONG-2: stop below the hammer bar's low (first signal's evidence).
     Fallback: 2% below current price.
     """
-    if match.setup_id == "ENTRY-LONG-1" and match.signals:
-        test_signal = match.signals[0]
-        test_bar_low = test_signal.evidence.get("bar_low")
-        if test_bar_low is not None:
-            return float(test_bar_low)
+    if match.setup_id in ("ENTRY-LONG-1", "ENTRY-LONG-2") and match.signals:
+        trigger_signal = match.signals[0]
+        bar_low = trigger_signal.evidence.get("bar_low")
+        if bar_low is not None:
+            return float(bar_low)
     return current_price * 0.98
 
 
