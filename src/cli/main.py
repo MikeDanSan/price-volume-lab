@@ -120,18 +120,60 @@ def backtest(ctx: click.Context, start_str: str | None, end_str: str | None) -> 
 def scan(ctx: click.Context, window: int) -> None:
     """One-shot VPA analysis: show context, volume, and any detected setups with reasoning."""
     cfg = load_config(ctx.obj["config_path"])
-    from cli.output import format_scan_result
+    from cli.output import format_pipeline_scan
+    from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
-    from data.context_window import get_context_window
-    from vpa_core.signals import evaluate
+    from vpa_core.contracts import (
+        Congestion,
+        ContextSnapshot,
+        DominantAlignment,
+        Trend,
+        TrendLocation,
+        TrendStrength,
+    )
+    from vpa_core.context import CONTEXT_DOWNTREND, CONTEXT_UPTREND, detect_context
+    from vpa_core.pipeline import run_pipeline
+    from vpa_core.risk_engine import AccountState
+    from vpa_core.setup_composer import SetupComposer
 
     store = BarStore(cfg.data.bar_store_path)
-    ctx_window = get_context_window(store, cfg.symbol, cfg.timeframe, window_size=window)
-    if ctx_window is None:
-        click.echo("No bars in store. Run 'vpa ingest' first.")
+    bars = store.get_bars(cfg.symbol, cfg.timeframe)
+    if not bars or len(bars) < 2:
+        click.echo("Not enough bars in store. Run 'vpa ingest' first.")
         return
-    results = evaluate(ctx_window)
-    click.echo(format_scan_result(ctx_window, results))
+
+    bars = bars[-window:]
+    vpa_cfg = load_vpa_config()
+    composer = SetupComposer(vpa_cfg)
+    bar_index = len(bars) - 1
+
+    trend_str = detect_context(bars, lookback=vpa_cfg.trend.window_K)
+    if trend_str == CONTEXT_UPTREND:
+        trend, location = Trend.UP, TrendLocation.BOTTOM
+    elif trend_str == CONTEXT_DOWNTREND:
+        trend, location = Trend.DOWN, TrendLocation.TOP
+    else:
+        trend, location = Trend.RANGE, TrendLocation.MIDDLE
+
+    context = ContextSnapshot(
+        tf=cfg.timeframe,
+        trend=trend,
+        trend_strength=TrendStrength.MODERATE,
+        trend_location=location,
+        congestion=Congestion(active=False),
+        dominant_alignment=DominantAlignment.WITH,
+    )
+
+    account = AccountState(equity=100_000.0)
+    result = run_pipeline(
+        bars, bar_index=bar_index, context=context,
+        account=account, config=vpa_cfg, composer=composer, tf=cfg.timeframe,
+    )
+
+    click.echo(format_pipeline_scan(
+        bar=bars[-1], features=result.features, context=context,
+        result=result, symbol=cfg.symbol, timeframe=cfg.timeframe,
+    ))
 
 
 # ---------- vpa paper ----------

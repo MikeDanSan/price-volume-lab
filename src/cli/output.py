@@ -5,10 +5,18 @@ The system must explain itself at every step -- not a black box.
 Every CLI command uses these formatters. Journal receives the same data.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from vpa_core.contracts import Bar, ContextWindow, Signal, TradePlan
 from vpa_core.context import detect_context
 from vpa_core.features import bar_range, close_location, spread
 from vpa_core.relative_volume import average_volume, relative_volume_for_bar
+
+if TYPE_CHECKING:
+    from vpa_core.contracts import CandleFeatures, ContextSnapshot, SignalEvent, TradeIntent
+    from vpa_core.pipeline import PipelineResult
 
 
 def _fmt_volume(vol: int | float) -> str:
@@ -99,6 +107,73 @@ def format_backtest_summary(result) -> str:
             rationale_str = " -> ".join(t.rationale) if isinstance(t.rationale, list) else str(t.rationale)
             lines.append(f"            Rationale: {rationale_str}")
             lines.append(f"            Setup    : {t.setup}")
+    lines.append("===")
+    return "\n".join(lines)
+
+
+def format_pipeline_scan(
+    bar: Bar,
+    features: CandleFeatures,
+    context: ContextSnapshot,
+    result: PipelineResult,
+    symbol: str,
+    timeframe: str,
+) -> str:
+    """Format a full pipeline scan result showing VPA reasoning at every stage."""
+    lines: list[str] = []
+
+    lines.append(f"=== VPA Pipeline Scan: {symbol} {timeframe} @ {bar.timestamp.isoformat()} ===")
+    lines.append("")
+
+    bar_type = "UP" if bar.close >= bar.open else "DOWN"
+    lines.append(f"  Bar     : {bar_type} | O {bar.open:.2f}  H {bar.high:.2f}  L {bar.low:.2f}  C {bar.close:.2f}  V {_fmt_volume(bar.volume)}")
+    lines.append(f"  Spread  : {features.spread:.2f} (rel {features.spread_rel:.2f}x → {features.spread_state.value})")
+    lines.append(f"  Range   : {features.range:.2f}  |  Upper wick: {features.upper_wick:.2f}  |  Lower wick: {features.lower_wick:.2f}")
+    lines.append(f"  Volume  : rel {features.vol_rel:.2f}x → {features.vol_state.value}")
+    lines.append(f"  Context : trend={context.trend.value}  location={context.trend_location.value}  strength={context.trend_strength.value}")
+
+    if context.dominant_alignment:
+        lines.append(f"  Dominant: {context.dominant_alignment.value}")
+
+    lines.append("")
+
+    if result.signals:
+        lines.append(f"  Signals fired ({len(result.signals)}):")
+        for sig in result.signals:
+            gate_tag = " [needs gate]" if sig.requires_context_gate else ""
+            lines.append(f"    → {sig.id} ({sig.signal_class.value}) bias={sig.direction_bias} pri={sig.priority}{gate_tag}")
+    else:
+        lines.append("  Signals fired: none")
+
+    if result.gate_result:
+        if result.gate_result.blocked:
+            lines.append(f"  Blocked  ({len(result.gate_result.blocked)}):")
+            for sig in result.gate_result.blocked:
+                reason = result.gate_result.block_reasons.get(sig.id, "unknown")
+                lines.append(f"    ✗ {sig.id}: {reason}")
+
+    if result.matches:
+        lines.append("")
+        for m in result.matches:
+            chain = " → ".join(s.id for s in m.signals)
+            lines.append(f"  SETUP MATCH: {m.setup_id} ({m.direction}) — {chain}")
+
+    if result.intents:
+        lines.append("")
+        for intent in result.intents:
+            if intent.status.value == "READY":
+                lines.append(f"  TRADE INTENT: {intent.setup} {intent.direction}")
+                lines.append(f"    Entry : {intent.entry_plan.timing} ({intent.entry_plan.order_type})")
+                lines.append(f"    Stop  : {intent.risk_plan.stop:.2f}")
+                lines.append(f"    Size  : {intent.risk_plan.size} shares (risk {intent.risk_plan.risk_pct:.3%})")
+                lines.append(f"    Chain : {' → '.join(intent.rationale)}")
+            else:
+                lines.append(f"  TRADE REJECTED: {intent.setup} — {intent.reject_reason}")
+
+    if not result.signals:
+        lines.append("")
+        lines.append("  No VPA setups detected on this bar.")
+
     lines.append("===")
     return "\n".join(lines)
 

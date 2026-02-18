@@ -60,10 +60,11 @@ journal:
 def test_cli_scan(tmp_config: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--config", str(tmp_config), "scan"])
-    assert result.exit_code == 0
-    assert "VPA Analysis" in result.output
+    assert result.exit_code == 0, result.output
+    assert "VPA Pipeline Scan" in result.output
+    assert "Volume" in result.output
+    assert "Spread" in result.output
     assert "Context" in result.output
-    assert "Rel. volume" in result.output
 
 
 def test_cli_backtest(tmp_config: Path) -> None:
@@ -105,4 +106,4 @@ data:
     runner = CliRunner()
     result = runner.invoke(cli, ["--config", str(config_path), "scan"])
     assert result.exit_code == 0
-    assert "No bars" in result.output
+    assert "Not enough bars" in result.output or "No bars" in result.output
