@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-18 (Commit 26)
+**Last updated:** 2026-02-18 (Phase F complete)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -37,39 +37,34 @@
 | AVOID-NEWS-1 | Long-legged doji on LOW vol (stand-aside) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_avoid_news_1` | `tests/test_rule_engine.py::TestAVOIDNEWS1` (10 tests) | **OK** | Config-driven body/wick ratios + LOW volume. Priority=0 (highest). No gate. |
 | TEST-SUP-1 | Test of supply (pass) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_test_sup_1` | `tests/test_rule_engine.py::TestTESTSUP1` (7 tests) | **OK** | LOW volume + NARROW/NORMAL spread. Requires CTX-1 gate. Bar_low enriched by pipeline for stop placement. |
 
-### 3.3 Atomic Rules (in VPA_ACTIONABLE_RULES.md, NOT yet in registry)
-| ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
-|----|------|-------------|---------------|---------------|--------|-------|
-| VAL-2 | Single-bar validation (small progress) | VPA_ACTIONABLE_RULES §3 | — | — | **MISSING** | NOT IN REGISTRY. |
-| ANOM-2 | Big effort, little result (absorption) | VPA_ACTIONABLE_RULES §3 | — | — | **MISSING** | NOT IN REGISTRY. |
-| TREND-VAL-1 | Uptrend validation | VPA_ACTIONABLE_RULES §4 | — | — | **MISSING** | NOT IN REGISTRY. |
-| TREND-ANOM-1 | Uptrend weakness | VPA_ACTIONABLE_RULES §4 | — | — | **MISSING** | NOT IN REGISTRY. |
-| TREND-ANOM-2 | Sequential anomaly cluster | VPA_ACTIONABLE_RULES §4 | — | — | **MISSING** | NOT IN REGISTRY. |
-| STR-1 | Hammer = strength | VPA_ACTIONABLE_RULES §5 | — | — | **MISSING** | NOT IN REGISTRY. |
-| WEAK-1 | Shooting star = weakness | VPA_ACTIONABLE_RULES §5 | — | — | **MISSING** | NOT IN REGISTRY. |
-| WEAK-2 | Shooting star + LOW vol = no demand | VPA_ACTIONABLE_RULES §5 | — | — | **MISSING** | NOT IN REGISTRY. |
-| TEST-SUP-1 | Test of supply (pass) | VPA_ACTIONABLE_RULES §6 | *(moved to §3.2 — now registered)* | | **OK** | Registered and implemented in Commit 14. |
-| TEST-SUP-2 | Failed test of supply | VPA_ACTIONABLE_RULES §6 | — | — | **MISSING** | NOT IN REGISTRY. |
-| TEST-DEM-1 | Test of demand (pass) | VPA_ACTIONABLE_RULES §6 | — | — | **MISSING** | NOT IN REGISTRY. |
-| CLIMAX-SELL-1 | Selling climax (topping) | VPA_ACTIONABLE_RULES §7 | — | — | **MISSING** | NOT IN REGISTRY. |
-| CLIMAX-SELL-2 | Upper-wick repetition emphasis | VPA_ACTIONABLE_RULES §7 | — | — | **MISSING** | NOT IN REGISTRY. |
-| AVOID-NEWS-1 | Long-legged doji / stop hunting | VPA_ACTIONABLE_RULES §8 | — | — | **MISSING** | NOT IN REGISTRY. |
-| AVOID-TRAP-1 | Trap-up anomaly without confirmation | VPA_ACTIONABLE_RULES §8 | — | — | **MISSING** | NOT IN REGISTRY. |
-| AVOID-COUNTER-1 | Counter-dominant entries | VPA_ACTIONABLE_RULES §8 | — | — | **MISSING** | NOT IN REGISTRY. |
-| CONF-1 | Wait for response | VPA_ACTIONABLE_RULES §9 | — | — | **MISSING** | NOT IN REGISTRY. |
-| CONF-2 | Two-level agreement | VPA_ACTIONABLE_RULES §9 | — | — | **MISSING** | NOT IN REGISTRY. |
+### 3.3 Rules defined in docs but NOT yet implemented
+| ID | Name | Spec Source | Status | Notes |
+|----|------|-------------|--------|-------|
+| VAL-2 | Single-bar validation (small progress) | VPA_ACTIONABLE_RULES §3 | **MISSING** | Planned Phase I. |
+| TREND-VAL-1 | Uptrend validation | VPA_ACTIONABLE_RULES §4 | **MISSING** | Planned Phase I. |
+| TREND-ANOM-1 | Uptrend weakness | VPA_ACTIONABLE_RULES §4 | **MISSING** | Planned Phase I. |
+| TREND-ANOM-2 | Sequential anomaly cluster | VPA_ACTIONABLE_RULES §4 | **MISSING** | Planned Phase I. |
+| STR-2 | Additional strength pattern | VPA_ACTIONABLE_RULES §5 | **MISSING** | Planned Phase I. |
+| WEAK-2 | Shooting star + LOW vol = no demand | VPA_ACTIONABLE_RULES §5 | **MISSING** | Planned Phase G (Commit 30). |
+| TEST-SUP-2 | Failed test of supply | VPA_ACTIONABLE_RULES §6 | **MISSING** | Planned Phase I. |
+| TEST-DEM-1 | Test of demand (pass) | VPA_ACTIONABLE_RULES §6 | **MISSING** | Planned Phase I. |
+| CLIMAX-SELL-1 | Selling climax (topping) | VPA_ACTIONABLE_RULES §7 | **MISSING** | Planned Phase G (Commit 31). |
+| CLIMAX-SELL-2 | Upper-wick repetition emphasis | VPA_ACTIONABLE_RULES §7 | **MISSING** | Planned Phase I. |
+| AVOID-TRAP-1 | Trap-up anomaly without confirmation | VPA_ACTIONABLE_RULES §8 | **MISSING** | Planned Phase I. |
+| AVOID-COUNTER-1 | Counter-dominant entries | VPA_ACTIONABLE_RULES §8 | **MISSING** | Planned Phase I. |
+| CONF-2 | Two-level agreement | VPA_ACTIONABLE_RULES §9 | **MISSING** | Planned Phase I. |
 
 ### 3.4 Setups (registered in YAML)
 | ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
 |----|------|-------------|---------------|---------------|--------|-------|
 | ENTRY-LONG-1 | Post-accumulation breakout | VPA_RULE_REGISTRY.yaml | `src/vpa_core/setup_composer.py::SetupComposer` | `tests/test_setup_composer.py` (8 tests) | **OK** | Sequence: TEST-SUP-1 → VAL-1 within window_X bars. State machine with expiration and invalidation. |
-
-### 3.5 Setups (in VPA_ACTIONABLE_RULES.md, NOT yet in registry)
-| ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
-|----|------|-------------|---------------|---------------|--------|-------|
-| ENTRY-SHORT-1 | Post-distribution markdown | VPA_ACTIONABLE_RULES §10 | — | — | **MISSING** | NOT IN REGISTRY. |
 | ENTRY-LONG-2 | Reversal long (hammer + confirm) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/setup_composer.py::SetupComposer` | `tests/test_setup_composer.py` (9 tests) | **OK** | Sequence: STR-1 → CONF-1 within window_X bars. Stop below hammer wick. AVOID-NEWS-1 invalidates. |
-| ENTRY-SHORT-2 | Reversal short (selling climax) | VPA_ACTIONABLE_RULES §10 | — | — | **MISSING** | NOT IN REGISTRY. |
+
+### 3.5 Setups defined in docs but NOT yet implemented
+| ID | Name | Spec Source | Status | Notes |
+|----|------|-------------|--------|-------|
+| ENTRY-SHORT-1 | Post-distribution markdown | VPA_ACTIONABLE_RULES §10 | **MISSING** | Planned Phase G (Commit 32). |
+| ENTRY-SHORT-2 | Reversal short (selling climax) | VPA_ACTIONABLE_RULES §10 | **MISSING** | Planned Phase I. |
 
 ### 3.6 EXTRA signals (in code, not in registry)
 | Code ID | Code Location | Description | Status | Notes |

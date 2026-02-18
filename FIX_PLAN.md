@@ -61,80 +61,116 @@
 
 ---
 
-## Phase E — Hardening + next milestones (M3–M6)
+## Phase E — Hardening + context gates (M3–M6) ✅
 
-### Commit 22: Update compliance report + fix plan checkpoint
-- **Scope:** Bring `COMPLIANCE_REPORT.md` and `FIX_PLAN.md` current with 21 completed commits.
-- **Files:** `COMPLIANCE_REPORT.md`, `FIX_PLAN.md`
-- **Acceptance criteria:**
-  - Report reflects 244 tests, 11 OK traceability items, 0 blocking issues.
-  - Plan shows all completed phases + Phase E roadmap.
+| Commit | Description | Status |
+|--------|-------------|--------|
+| 22 | Update compliance report + fix plan checkpoint | ✅ Done |
+| 23 | Migrate CLI `paper` command to canonical pipeline | ✅ Done |
+| 24 | Context engine: real trend, location, congestion detection | ✅ Done |
+| 25 | CTX-2 full implementation (policy-driven dominant alignment gate) | ✅ Done |
+| 26 | CTX-3 implementation (congestion awareness gate) | ✅ Done |
+| 27 | Golden-fixture runner for end-to-end pipeline replay | ✅ Done |
 
-### Commit 23: Migrate CLI `paper` command to canonical pipeline
-- **Scope:** Replace deprecated `evaluate()` call in `paper` command with `run_pipeline()`.
-- **Files:** `src/cli/main.py`, `tests/test_cli.py`
-- **Acceptance criteria:**
-  - `paper` command uses canonical pipeline (same as `scan` and `backtest`).
-  - Deprecation warning removed.
-  - Paper executor respects `NEXT_BAR_OPEN` entry timing.
-- **Tests:** CLI `paper` smoke test updated.
-
-### Commit 24: Context engine stub → real trend detector
-- **Scope:** Replace `_build_context()` bridge with a proper `ContextEngine` that produces `ContextSnapshot` from bar history.
-- **Files:** `src/vpa_core/context_engine.py` (new), update `pipeline.py`, `cli/main.py`, `backtest/runner.py`
-- **Acceptance criteria:**
-  - `ContextEngine.analyze(bars, config) -> ContextSnapshot` with real trend, location, congestion fields.
-  - Pipeline calls context engine instead of `_build_context()` stub.
-  - Trend direction uses SMA crossover or swing analysis (config-driven window).
-  - Location classification: TOP/BOTTOM/MIDDLE based on lookback range percentile.
-- **Tests:** Known uptrend bars → UPTREND + MIDDLE; bars near recent high → TOP.
-
-### Commit 25: CTX-2 full implementation (dominant alignment gate)
-- **Scope:** Move CTX-2 from Risk Engine heuristic to proper context gate.
-- **Files:** `src/vpa_core/context_gates.py`, `src/vpa_core/risk_engine.py`
-- **Acceptance criteria:**
-  - CTX-2 checks dominant timeframe alignment in `apply_gates()`.
-  - Risk Engine no longer duplicates this check.
-  - Traceability updated from PARTIAL to OK.
-- **Tests:** Signal blocked when dominant trend opposes; passes when aligned.
-
-### Commit 26: CTX-3 implementation (congestion awareness)
-- **Scope:** Implement congestion detection and CTX-3 gate.
-- **Files:** `src/vpa_core/context_engine.py`, `src/vpa_core/context_gates.py`
-- **Acceptance criteria:**
-  - Context engine detects congestion zones (tight range clusters).
-  - CTX-3 blocks low-priority signals inside congestion unless breakout volume present.
-- **Tests:** Narrow-range bars → congestion flagged; high-volume breakout bar → not blocked.
-
-### Commit 27: Golden-fixture runner
-- **Scope:** Create a runner that loads `fixtures/vpa/*.json` files and replays them against the pipeline.
-- **Files:** `tests/test_golden_fixtures.py` (new), `scripts/run_fixtures.py` (optional)
-- **Acceptance criteria:**
-  - Each fixture specifies input bars + expected signals/setups/intents.
-  - Runner asserts pipeline output matches expectations.
-  - CI-ready (pytest discoverable).
-- **Tests:** Self-referential: the fixtures ARE the tests.
-
----
-
-## M6 checkpoint criteria (review with user before proceeding)
+### M6 checkpoint: PASSED ✅
 - All 3 context gates (CTX-1, CTX-2, CTX-3) at OK status
 - Context engine produces real trend + location + congestion
 - Golden fixtures validate end-to-end pipeline
 - CLI scan + paper + backtest all use canonical pipeline
-- 11+ rules, 2+ setups, 3 gates — enough for meaningful backtest
-- Ready to discuss: short-side rules, MTF, live paper trading
+- 8 rules, 2 setups, 3 gates — meaningful backtest
+- 312 tests passing
 
 ---
 
-## Commit dependency graph (Phase E)
+## Phase F — Live data + environment + scheduler ✅
 
-```
-22 (checkpoint) → 23 (paper migration) → 24 (context engine)
-                                              ↓
-                                    25 (CTX-2 gate) → 26 (CTX-3 gate)
-                                                          ↓
-                                                   27 (golden fixtures)
-                                                          ↓
-                                                    ═══ M6 review ═══
-```
+| Commit | Description | Status |
+|--------|-------------|--------|
+| 28 | Fix local environment: dotenv loading, alpaca-py v0.43 compat, IEX feed default | ✅ Done |
+| 29 | Add live paper-trading scheduler with market-hours awareness (`vpa paper --live`) | ✅ Done |
+
+### Phase F deliverables
+- 1,226 SPY 15m bars ingested (IEX free tier)
+- First backtest on real data: 3 trades, -2.96%
+- Live scheduler: market-aware loop, bar-close alignment, graceful shutdown
+- 312 tests passing
+
+---
+
+## Phase G — Short-side + tuning (next)
+
+Priority-ordered based on backtest analysis of Phase F real-data run.
+
+### Commit 30: WEAK-2 atomic rule (no demand — shooting star + LOW vol)
+- **Scope:** Register WEAK-2 in YAML + implement in rule engine.
+- **Rationale:** Required building block for short-side setups.
+- **Files:** `VPA_RULE_REGISTRY.yaml`, `rule_engine.py`, `test_rule_engine.py`
+- **Acceptance criteria:** WEAK-2 fires on shooting star with LOW volume. Traceability updated.
+- **Tests:** 6+ tests covering fire/no-fire/config-driven thresholds.
+
+### Commit 31: CLIMAX-SELL-1 atomic rule (selling climax at top)
+- **Scope:** Register + implement climactic selling detection.
+- **Rationale:** Core signal for identifying distribution tops.
+- **Files:** `VPA_RULE_REGISTRY.yaml`, `rule_engine.py`, `test_rule_engine.py`
+- **Acceptance criteria:** Ultra-high volume + wide spread at TOP location.
+- **Tests:** 6+ tests.
+
+### Commit 32: ENTRY-SHORT-1 setup (post-distribution markdown)
+- **Scope:** Register + implement first short-side setup.
+- **Rationale:** System currently cannot profit in downtrends.
+- **Sequence:** CLIMAX-SELL-1 → WEAK-1 (or WEAK-2) within window.
+- **Files:** `VPA_RULE_REGISTRY.yaml`, `setup_composer.py`, `test_setup_composer.py`
+- **Acceptance criteria:** Setup matches short sequence, risk engine computes short stops.
+- **Tests:** 8+ tests covering sequence, expiration, invalidation.
+
+### Commit 33: Risk engine short-side support
+- **Scope:** Extend risk engine to compute stop-above for short entries.
+- **Files:** `risk_engine.py`, `test_risk_engine.py`
+- **Acceptance criteria:** Short TradeIntents have stop above entry, correct sizing.
+- **Tests:** 4+ tests for short stop placement and sizing.
+
+### Commit 34: Backtest runner short-side support
+- **Scope:** Extend backtest to handle short positions (entry, stop, exit).
+- **Files:** `backtest/runner.py`, `test_backtest.py`
+- **Acceptance criteria:** Short trades track correctly with negative PnL on adverse moves.
+- **Tests:** 4+ tests for short trade lifecycle.
+
+### Commit 35: Low-liquidity guard
+- **Scope:** Add configurable minimum-volume filter to rule engine.
+- **Rationale:** Phase F backtest losses all occurred during holiday thin trading.
+- **Files:** `vpa.default.json`, `vpa_config.schema.json`, `vpa_config.py`, `pipeline.py`
+- **Acceptance criteria:** Pipeline skips evaluation when avg volume < threshold.
+- **Tests:** Pipeline returns no signals when volume guard trips.
+
+### Commit 36: Golden fixtures for short-side + volume guard
+- **Scope:** Add golden fixtures for ENTRY-SHORT-1 and low-liquidity scenarios.
+- **Files:** `docs/config/fixtures/vpa/`
+- **Acceptance criteria:** Fixtures replay successfully in `test_golden_fixtures.py`.
+
+---
+
+## Phase G checkpoint criteria (review before Phase H)
+- At least 1 short-side setup operational
+- Backtest shows both long and short trades
+- Low-liquidity guard prevents holiday-period false signals
+- Ready to discuss: MTF support, additional rules, stop optimization
+
+---
+
+## Future phases (not yet planned in detail)
+
+### Phase H — Multi-timeframe + stop optimization
+- Daily/hourly dominant alignment for CTX-2 (currently returns UNKNOWN)
+- ATR-based stop tuning (wider for volatile symbols)
+- Per-symbol config support (`config-SPY.yaml`, `config-AAPL.yaml`)
+
+### Phase I — Extended rule coverage
+- TREND-VAL-1, TREND-ANOM-1, TREND-ANOM-2 (trend-level rules)
+- TEST-SUP-2 (failed test), TEST-DEM-1 (demand test)
+- CONF-2 (two-level agreement)
+- AVOID-TRAP-1, AVOID-COUNTER-1
+
+### Phase J — Production readiness
+- Dockerfile + docker-compose for per-symbol containers
+- Health checks, alerting, dashboarding
+- PAPER_TO_LIVE.md checklist completion
