@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -401,6 +401,71 @@ class TestWEAK1:
 
 
 # ---------------------------------------------------------------------------
+# CONF-1: positive response bar (up bar, non-low volume, non-narrow spread)
+# ---------------------------------------------------------------------------
+
+
+class TestCONF1:
+    """FXT-CONF-1-basic equivalent."""
+
+    def test_fires_on_up_average_vol_normal_spread(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.AVERAGE, spread_state=SpreadState.NORMAL)
+        signal = detect_conf_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "CONF-1"
+        assert signal.signal_class == SignalClass.CONFIRMATION
+        assert signal.direction_bias == "BULLISH"
+        assert signal.requires_context_gate is False
+
+    def test_fires_on_high_vol_wide_spread(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.HIGH, spread_state=SpreadState.WIDE)
+        assert detect_conf_1(f, cfg) is not None
+
+    def test_fires_on_ultra_high_vol(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.ULTRA_HIGH, spread_state=SpreadState.NORMAL)
+        assert detect_conf_1(f, cfg) is not None
+
+    def test_no_fire_down_bar(self, cfg: VPAConfig) -> None:
+        """Down bar cannot be a positive response."""
+        f = _features(candle_type=CandleType.DOWN, vol_state=VolumeState.HIGH, spread_state=SpreadState.WIDE)
+        assert detect_conf_1(f, cfg) is None
+
+    def test_no_fire_low_volume(self, cfg: VPAConfig) -> None:
+        """Low volume up bar lacks conviction — not a real response."""
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.LOW, spread_state=SpreadState.NORMAL)
+        assert detect_conf_1(f, cfg) is None
+
+    def test_no_fire_narrow_spread(self, cfg: VPAConfig) -> None:
+        """Narrow body means the bar barely moved — not a response."""
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.AVERAGE, spread_state=SpreadState.NARROW)
+        assert detect_conf_1(f, cfg) is None
+
+    def test_priority_lower_than_signals(self, cfg: VPAConfig) -> None:
+        """Confirmation has lower priority than the signals it confirms."""
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.AVERAGE, spread_state=SpreadState.NORMAL)
+        signal = detect_conf_1(f, cfg)
+        assert signal.priority == 3
+
+    def test_evidence_populated(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.HIGH, spread_state=SpreadState.WIDE, vol_rel=1.5, spread_rel=1.4)
+        signal = detect_conf_1(f, cfg)
+        assert signal is not None
+        assert signal.evidence["candle_type"] == "UP"
+        assert signal.evidence["vol_state"] == "HIGH"
+        assert signal.evidence["spread_state"] == "WIDE"
+        assert signal.evidence["vol_rel"] == 1.5
+        assert signal.evidence["spread_rel"] == 1.4
+
+    def test_can_cofire_with_val_1(self, cfg: VPAConfig) -> None:
+        """A wide up bar on high vol can be both VAL-1 and CONF-1 simultaneously."""
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.HIGH, spread_state=SpreadState.WIDE)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "VAL-1" in ids
+        assert "CONF-1" in ids
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1: low volume + narrow/normal spread = supply test pass
 # ---------------------------------------------------------------------------
 
@@ -460,15 +525,16 @@ class TestTESTSUP1:
 
 class TestEvaluateRules:
     def test_no_signals_on_neutral_bar(self, cfg: VPAConfig) -> None:
-        f = _features()  # NORMAL spread, AVERAGE volume
+        """DOWN bar with AVERAGE volume and NORMAL spread fires nothing."""
+        f = _features(candle_type=CandleType.DOWN)
         signals = evaluate_rules(f, cfg)
         assert signals == []
 
     def test_val_1_collected(self, cfg: VPAConfig) -> None:
         f = _features(candle_type=CandleType.UP, spread_state=SpreadState.WIDE, vol_state=VolumeState.HIGH)
         signals = evaluate_rules(f, cfg)
-        assert len(signals) == 1
-        assert signals[0].id == "VAL-1"
+        ids = {s.id for s in signals}
+        assert "VAL-1" in ids
 
     def test_anom_1_collected(self, cfg: VPAConfig) -> None:
         f = _features(candle_type=CandleType.UP, spread_state=SpreadState.WIDE, vol_state=VolumeState.LOW)
@@ -486,9 +552,12 @@ class TestEvaluateRules:
         """VAL-1 and ANOM-1 cannot both fire on the same bar (volume can't be HIGH and LOW)."""
         f_val = _features(candle_type=CandleType.UP, spread_state=SpreadState.WIDE, vol_state=VolumeState.HIGH)
         f_anom = _features(candle_type=CandleType.UP, spread_state=SpreadState.WIDE, vol_state=VolumeState.LOW)
-        assert len(evaluate_rules(f_val, cfg)) == 1
-        assert len(evaluate_rules(f_anom, cfg)) == 1
-        assert evaluate_rules(f_val, cfg)[0].id != evaluate_rules(f_anom, cfg)[0].id
+        val_ids = {s.id for s in evaluate_rules(f_val, cfg)}
+        anom_ids = {s.id for s in evaluate_rules(f_anom, cfg)}
+        assert "VAL-1" in val_ids
+        assert "VAL-1" not in anom_ids
+        assert "ANOM-1" in anom_ids
+        assert "ANOM-1" not in val_ids
 
     def test_str_1_collected(self, cfg: VPAConfig) -> None:
         f = _features(lower_wick=7.0, spread_val=2.0, upper_wick=1.0, range_val=10.0)
@@ -501,6 +570,12 @@ class TestEvaluateRules:
         signals = evaluate_rules(f, cfg)
         ids = {s.id for s in signals}
         assert "WEAK-1" in ids
+
+    def test_conf_1_collected(self, cfg: VPAConfig) -> None:
+        f = _features(candle_type=CandleType.UP, vol_state=VolumeState.AVERAGE, spread_state=SpreadState.NORMAL)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "CONF-1" in ids
 
     def test_anom_2_collected(self, cfg: VPAConfig) -> None:
         f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)

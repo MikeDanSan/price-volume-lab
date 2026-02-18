@@ -127,6 +127,30 @@ rules:
     tests_required:
       - "FXT-ANOM-2-basic"
 
+  - id: "CONF-1"
+    type: "atomic_rule"
+    class: "CONFIRMATION"
+    direction_bias: "BULLISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: []
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "candle_type == UP"
+        - "volState in {AVERAGE, HIGH, ULTRA_HIGH}"
+        - "spreadState in {NORMAL, WIDE}"
+    emits:
+      signal_event: "POSITIVE_RESPONSE"
+    notes: >
+      Positive response bar: up bar with visible body and non-low volume.
+      Meaningful only when following a strength/test signal (STR-1, etc.)
+      via Setup Composer sequencing. Couling: "we wait for the next candle"
+      — lack of positive response is not bullish.
+    tests_required:
+      - "FXT-CONF-1-basic"
+
   - id: "TEST-SUP-1"
     type: "atomic_rule"
     class: "TEST"

@@ -15,6 +15,7 @@ Canonical rules implemented:
     ANOM-2     — "Big effort, little result" absorption/weakness
     STR-1      — Hammer (strength: selling absorbed, reversal candidate)
     WEAK-1     — Shooting star (weakness: demand exhaustion)
+    CONF-1     — Positive response (confirmation candle)
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 """
 
@@ -268,6 +269,55 @@ def detect_anom_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | 
 
 
 # ---------------------------------------------------------------------------
+# CONF-1 — Positive response bar (confirmation candle)
+# Registry: candle_type == UP, volState >= AVERAGE, spreadState >= NORMAL
+# ---------------------------------------------------------------------------
+
+
+def detect_conf_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect CONF-1: positive response bar — bullish confirmation candle.
+
+    Conditions (from VPA_RULE_REGISTRY.yaml):
+        - candle_type == UP  (close > open)
+        - volState in {AVERAGE, HIGH, ULTRA_HIGH}  (not low — needs backing)
+        - spreadState in {NORMAL, WIDE}  (visible body, not a doji)
+
+    This signal is intentionally broad on its own. It becomes meaningful
+    only when the Setup Composer pairs it with a prior strength/test
+    signal (e.g., STR-1 → CONF-1 = ENTRY-LONG-2 candidate).
+
+    Couling: "Is this stopping volume — perhaps, and we wait for the
+    next candle…"; lack of positive response is not bullish.
+
+    No context gate required (the prior signal's gate is sufficient).
+    """
+    if features.candle_type != CandleType.UP:
+        return None
+    if features.vol_state not in (VolumeState.AVERAGE, VolumeState.HIGH, VolumeState.ULTRA_HIGH):
+        return None
+    if features.spread_state not in (SpreadState.NORMAL, SpreadState.WIDE):
+        return None
+
+    return SignalEvent(
+        id="CONF-1",
+        name="PositiveResponse_Confirmation",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.CONFIRMATION,
+        direction_bias="BULLISH",
+        priority=3,
+        evidence={
+            "candle_type": features.candle_type.value,
+            "spread_state": features.spread_state.value,
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+            "spread_rel": features.spread_rel,
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 # Registry: volState == LOW, spreadState in {NARROW, NORMAL}
 # ---------------------------------------------------------------------------
@@ -319,6 +369,7 @@ _RULE_DETECTORS = [
     detect_anom_2,
     detect_str_1,
     detect_weak_1,
+    detect_conf_1,
     detect_test_sup_1,
 ]
 

@@ -91,11 +91,11 @@ class TestPartialPipeline:
         assert result.features.vol_state in (VolumeState.HIGH, VolumeState.ULTRA_HIGH)
         assert result.features.spread_state == SpreadState.WIDE
 
-        assert len(result.signals) == 1
-        assert result.signals[0].id == "VAL-1"
+        signal_ids = {s.id for s in result.signals}
+        assert "VAL-1" in signal_ids
 
         assert result.gate_result is not None
-        assert len(result.gate_result.actionable) == 1
+        assert any(s.id == "VAL-1" for s in result.gate_result.actionable)
         assert len(result.gate_result.blocked) == 0
 
         assert result.matches == []
@@ -177,8 +177,8 @@ class TestFullPipeline:
         result = run_pipeline(bars, bar_index=20, context=_context(),
                               account=_account(), config=cfg, composer=composer)
 
-        assert len(result.signals) == 1
-        assert result.signals[0].id == "VAL-1"
+        signal_ids = {s.id for s in result.signals}
+        assert "VAL-1" in signal_ids
 
         assert len(result.matches) == 1
         assert result.matches[0].setup_id == "ENTRY-LONG-1"

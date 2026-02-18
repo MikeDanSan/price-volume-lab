@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-17 (Commit 17)
+**Last updated:** 2026-02-18 (Commit 18)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -33,6 +33,7 @@
 | ANOM-2 | Big effort, little result (absorption) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_anom_2` | `tests/test_rule_engine.py::TestANOM2` (9 tests) | **OK** | HIGH/ULTRA_HIGH volume + NARROW/NORMAL spread. Direction-agnostic. Requires CTX-1 gate. |
 | STR-1 | Hammer (strength) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_str_1` | `tests/test_rule_engine.py::TestSTR1` (9 tests) | **OK** | Config-driven wick/body/range ratios. Requires CTX-1 gate. |
 | WEAK-1 | Shooting star (weakness) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_weak_1` | `tests/test_rule_engine.py::TestWEAK1` (9 tests) | **OK** | Config-driven wick/body/range ratios. Inverse of STR-1. Requires CTX-1 gate. |
+| CONF-1 | Positive response (confirmation) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_conf_1` | `tests/test_rule_engine.py::TestCONF1` (9 tests) | **OK** | UP bar + non-LOW volume + non-NARROW spread. No gate (prior signal's gate suffices). |
 | TEST-SUP-1 | Test of supply (pass) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_test_sup_1` | `tests/test_rule_engine.py::TestTESTSUP1` (7 tests) | **OK** | LOW volume + NARROW/NORMAL spread. Requires CTX-1 gate. Bar_low enriched by pipeline for stop placement. |
 
 ### 3.3 Atomic Rules (in VPA_ACTIONABLE_RULES.md, NOT yet in registry)
@@ -96,4 +97,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 8 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 17 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 9 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, CONF-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 16 MISSING, 0 DRIFT, 0 EXTRA.**
