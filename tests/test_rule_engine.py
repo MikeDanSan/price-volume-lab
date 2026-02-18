@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -399,6 +399,81 @@ class TestWEAK1:
         assert detect_weak_1(hammer, cfg) is None
         assert detect_weak_1(star, cfg) is not None
         assert detect_str_1(star, cfg) is None
+
+
+# ---------------------------------------------------------------------------
+# WEAK-2: shooting star + LOW volume = no demand
+# ---------------------------------------------------------------------------
+
+
+class TestWEAK2:
+    """FXT-WEAK-2-basic: shooting star shape + LOW volume fires WEAK-2."""
+
+    def _shooting_star_low_vol(self, **kw) -> CandleFeatures:
+        """Classic shooting star with LOW volume."""
+        defaults = dict(
+            upper_wick=7.0, spread_val=2.0, lower_wick=1.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        defaults.update(kw)
+        return _features(**defaults)
+
+    def test_fires_on_shooting_star_low_vol(self, cfg: VPAConfig) -> None:
+        f = self._shooting_star_low_vol()
+        signal = detect_weak_2(f, cfg)
+        assert signal is not None
+        assert signal.id == "WEAK-2"
+        assert signal.name == "ShootingStar_NoDemand"
+        assert signal.signal_class == SignalClass.WEAKNESS
+        assert signal.direction_bias == "BEARISH"
+        assert signal.requires_context_gate is True
+        assert signal.priority == 1
+
+    def test_no_fire_average_volume(self, cfg: VPAConfig) -> None:
+        """Shooting star with AVERAGE volume -> WEAK-1 only, not WEAK-2."""
+        f = self._shooting_star_low_vol(vol_state=VolumeState.AVERAGE)
+        assert detect_weak_2(f, cfg) is None
+
+    def test_no_fire_high_volume(self, cfg: VPAConfig) -> None:
+        f = self._shooting_star_low_vol(vol_state=VolumeState.HIGH)
+        assert detect_weak_2(f, cfg) is None
+
+    def test_no_fire_small_upper_wick(self, cfg: VPAConfig) -> None:
+        """Not a shooting star shape -> no fire even with LOW volume."""
+        f = _features(
+            upper_wick=4.0, spread_val=2.0, lower_wick=1.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_weak_2(f, cfg) is None
+
+    def test_no_fire_zero_range(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=0.0, spread_val=0.0, lower_wick=0.0, range_val=0.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_weak_2(f, cfg) is None
+
+    def test_evidence_includes_vol_state(self, cfg: VPAConfig) -> None:
+        f = self._shooting_star_low_vol()
+        signal = detect_weak_2(f, cfg)
+        assert signal is not None
+        assert signal.evidence["vol_state"] == "LOW"
+        assert signal.evidence["upper_wick_ratio"] == 0.7
+        assert signal.evidence["body_ratio"] == 0.2
+
+    def test_weak_1_also_fires_on_same_bar(self, cfg: VPAConfig) -> None:
+        """WEAK-1 and WEAK-2 can co-fire (both detect the shooting star)."""
+        f = self._shooting_star_low_vol()
+        assert detect_weak_1(f, cfg) is not None
+        assert detect_weak_2(f, cfg) is not None
+
+    def test_higher_priority_than_weak_1(self, cfg: VPAConfig) -> None:
+        """WEAK-2 (priority 1) is more decisive than WEAK-1 (priority 2)."""
+        f = self._shooting_star_low_vol()
+        w1 = detect_weak_1(f, cfg)
+        w2 = detect_weak_2(f, cfg)
+        assert w1 is not None and w2 is not None
+        assert w2.priority < w1.priority
 
 
 # ---------------------------------------------------------------------------

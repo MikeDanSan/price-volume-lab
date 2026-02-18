@@ -108,6 +108,25 @@ rules:
     tests_required:
       - "FXT-WEAK-1-basic"
 
+  - id: "WEAK-2"
+    type: "atomic_rule"
+    class: "WEAKNESS"
+    direction_bias: "BEARISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "candle_patterns.shooting_star"
+    conditions:
+      all:
+        - "WEAK-1 candle shape (shooting star geometry)"
+        - "volState == LOW"
+    emits:
+      signal_event: "TEST_DEMAND_CONFIRMED_LOW"
+    notes: "Shooting star + LOW volume = no demand. Market pushed higher but no buying interest. More decisive than WEAK-1 alone."
+    tests_required:
+      - "FXT-WEAK-2-basic"
+
   - id: "ANOM-2"
     type: "atomic_rule"
     class: "ANOMALY"

@@ -15,6 +15,7 @@ Canonical rules implemented:
     ANOM-2     — "Big effort, little result" absorption/weakness
     STR-1      — Hammer (strength: selling absorbed, reversal candidate)
     WEAK-1     — Shooting star (weakness: demand exhaustion)
+    WEAK-2     — Shooting star + LOW volume (no demand)
     CONF-1     — Positive response (confirmation candle)
     AVOID-NEWS-1 — Long-legged doji on low volume (manipulation/stand-aside)
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
@@ -227,6 +228,63 @@ def detect_weak_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | 
 
 
 # ---------------------------------------------------------------------------
+# WEAK-2 — Shooting star + LOW volume ("no demand")
+# Registry: WEAK-1 candle shape + volState == LOW
+# ---------------------------------------------------------------------------
+
+
+def detect_weak_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect WEAK-2: shooting star on LOW volume = no demand confirmation.
+
+    Conditions (from VPA_ACTIONABLE_RULES §5):
+        - WEAK-1 candle shape (shooting star geometry)
+        - volState == LOW
+
+    Couling: shooting star shows market pushed higher but "no demand",
+    confirmed by low volume. More decisive than WEAK-1 alone because
+    volume confirms the lack of buying interest.
+
+    Requires CTX-1 gate (trend/phase context needed).
+    """
+    rng = features.range
+    if rng <= 0:
+        return None
+
+    if features.vol_state != VolumeState.LOW:
+        return None
+
+    ss = config.candle_patterns.shooting_star
+    upper_ratio = features.upper_wick / rng
+    body_ratio = features.spread / rng
+    lower_ratio = features.lower_wick / rng
+
+    if upper_ratio < ss.upper_wick_ratio_min:
+        return None
+    if body_ratio > ss.body_ratio_max:
+        return None
+    if lower_ratio > ss.lower_wick_ratio_max:
+        return None
+
+    return SignalEvent(
+        id="WEAK-2",
+        name="ShootingStar_NoDemand",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.WEAKNESS,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={
+            "upper_wick_ratio": round(upper_ratio, 4),
+            "body_ratio": round(body_ratio, 4),
+            "lower_wick_ratio": round(lower_ratio, 4),
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # ANOM-2 — "Big effort, little result" (absorption/weakness)
 # Registry: volState in {HIGH, ULTRA_HIGH}, spreadState in {NARROW, NORMAL}
 # ---------------------------------------------------------------------------
@@ -428,6 +486,7 @@ _RULE_DETECTORS = [
     detect_anom_2,
     detect_str_1,
     detect_weak_1,
+    detect_weak_2,
     detect_conf_1,
     detect_avoid_news_1,
     detect_test_sup_1,
