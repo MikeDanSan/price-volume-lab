@@ -37,15 +37,24 @@ class AccountState:
 
 
 def _compute_stop(match: SetupMatch, current_price: float) -> float:
-    """Compute stop level based on setup type.
+    """Compute stop level based on setup type and direction.
 
-    ENTRY-LONG-1: stop below the test bar's low (first signal's evidence).
-    ENTRY-LONG-2: stop below the hammer bar's low (first signal's evidence).
-    Fallback: 2% below current price.
+    LONG setups: stop below the trigger bar's low.
+        ENTRY-LONG-1: test bar low.  ENTRY-LONG-2: hammer bar low.
+        Fallback: 2% below current price.
+
+    SHORT setups: stop above the trigger bar's high.
+        ENTRY-SHORT-1: climax bar high.
+        Fallback: 2% above current price.
     """
-    if match.setup_id in ("ENTRY-LONG-1", "ENTRY-LONG-2") and match.signals:
-        trigger_signal = match.signals[0]
-        bar_low = trigger_signal.evidence.get("bar_low")
+    if match.signals:
+        trigger = match.signals[0]
+        if match.direction == "SHORT":
+            bar_high = trigger.evidence.get("bar_high")
+            if bar_high is not None:
+                return float(bar_high)
+            return current_price * 1.02
+        bar_low = trigger.evidence.get("bar_low")
         if bar_low is not None:
             return float(bar_low)
     return current_price * 0.98

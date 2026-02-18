@@ -29,13 +29,21 @@ def cfg() -> VPAConfig:
     return load_vpa_config()
 
 
-def _signal(rule_id: str = "TEST-SUP-1", bar_low: float | None = None) -> SignalEvent:
-    evidence = {}
+def _signal(
+    rule_id: str = "TEST-SUP-1",
+    bar_low: float | None = None,
+    bar_high: float | None = None,
+    direction_bias: str = "BULLISH",
+    signal_class: SignalClass = SignalClass.TEST,
+) -> SignalEvent:
+    evidence: dict = {}
     if bar_low is not None:
         evidence["bar_low"] = bar_low
+    if bar_high is not None:
+        evidence["bar_high"] = bar_high
     return SignalEvent(
         id=rule_id, name="Test", tf="15m", ts=TS,
-        signal_class=SignalClass.TEST, direction_bias="BULLISH",
+        signal_class=signal_class, direction_bias=direction_bias,
         evidence=evidence,
     )
 
@@ -45,6 +53,21 @@ def _match(bar_low: float | None = 98.0) -> SetupMatch:
         setup_id="ENTRY-LONG-1",
         direction="LONG",
         signals=[_signal("TEST-SUP-1", bar_low=bar_low), _signal("VAL-1")],
+        matched_at_bar=5,
+        tf="15m",
+    )
+
+
+def _short_match(bar_high: float | None = 102.0) -> SetupMatch:
+    return SetupMatch(
+        setup_id="ENTRY-SHORT-1",
+        direction="SHORT",
+        signals=[
+            _signal("CLIMAX-SELL-1", bar_high=bar_high,
+                    direction_bias="BEARISH", signal_class=SignalClass.WEAKNESS),
+            _signal("WEAK-1", direction_bias="BEARISH",
+                    signal_class=SignalClass.WEAKNESS),
+        ],
         matched_at_bar=5,
         tf="15m",
     )
@@ -197,3 +220,83 @@ class TestRationale:
         assert intent.setup == "ENTRY-LONG-1"
         assert intent.direction == "LONG"
         assert intent.tf == "15m"
+
+
+# ---------------------------------------------------------------------------
+# Short-side: ENTRY-SHORT-1 stop & sizing
+# ---------------------------------------------------------------------------
+
+
+class TestShortSizing:
+    def test_basic_short_size_calculation(self, cfg: VPAConfig) -> None:
+        """size = (equity * risk_pct) / |entry - stop|
+        = (100000 * 0.005) / |100 - 102| = 500 / 2 = 250 shares."""
+        intent = evaluate_risk(_short_match(bar_high=102.0), 100.0, _account(), _context(), cfg)
+        assert intent.status == TradeIntentStatus.READY
+        assert intent.direction == "SHORT"
+        assert intent.risk_plan.size == 250
+        assert intent.risk_plan.stop == 102.0
+        assert intent.risk_plan.risk_pct == 0.005
+
+    def test_stop_from_climax_bar_high(self, cfg: VPAConfig) -> None:
+        """Stop placed above the climax bar's high."""
+        intent = evaluate_risk(_short_match(bar_high=105.0), 100.0, _account(), _context(), cfg)
+        assert intent.risk_plan.stop == 105.0
+        # (100000 * 0.005) / |100 - 105| = 500 / 5 = 100
+        assert intent.risk_plan.size == 100
+
+    def test_fallback_stop_when_no_bar_high(self, cfg: VPAConfig) -> None:
+        """When climax signal has no bar_high evidence, fallback to 2% above price."""
+        intent = evaluate_risk(_short_match(bar_high=None), 100.0, _account(), _context(), cfg)
+        assert intent.risk_plan.stop == pytest.approx(102.0)
+
+    def test_short_entry_plan_uses_config(self, cfg: VPAConfig) -> None:
+        intent = evaluate_risk(_short_match(), 100.0, _account(), _context(), cfg)
+        assert intent.entry_plan.timing == "NEXT_BAR_OPEN"
+        assert intent.entry_plan.order_type == "MARKET"
+
+
+class TestShortCountertrend:
+    """CTX-2 risk reduction applies to shorts the same way as longs."""
+
+    def test_short_against_trend_reduced_risk(self, cfg: VPAConfig) -> None:
+        intent = evaluate_risk(
+            _short_match(bar_high=102.0), 100.0, _account(),
+            _context(DominantAlignment.AGAINST), cfg,
+        )
+        assert intent.risk_plan.risk_pct == pytest.approx(0.0025)
+        assert "CTX-2:AGAINST(risk_reduced)" in intent.rationale
+
+    def test_short_with_trend_full_risk(self, cfg: VPAConfig) -> None:
+        intent = evaluate_risk(
+            _short_match(bar_high=102.0), 100.0, _account(),
+            _context(DominantAlignment.WITH), cfg,
+        )
+        assert intent.risk_plan.risk_pct == 0.005
+        assert "CTX-2:WITH" in intent.rationale
+
+
+class TestShortRejects:
+    def test_reject_short_max_positions(self, cfg: VPAConfig) -> None:
+        account = _account(positions=1)
+        intent = evaluate_risk(_short_match(), 100.0, account, _context(), cfg)
+        assert intent.status == TradeIntentStatus.REJECTED
+        assert "Max concurrent positions" in intent.reject_reason
+
+    def test_reject_short_daily_loss_limit(self, cfg: VPAConfig) -> None:
+        account = _account(daily_pnl=-2000.0)
+        intent = evaluate_risk(_short_match(), 100.0, account, _context(), cfg)
+        assert intent.status == TradeIntentStatus.REJECTED
+
+
+class TestShortRationale:
+    def test_short_rationale_includes_signal_ids(self, cfg: VPAConfig) -> None:
+        intent = evaluate_risk(_short_match(), 100.0, _account(), _context(), cfg)
+        assert "CLIMAX-SELL-1" in intent.rationale
+        assert "WEAK-1" in intent.rationale
+
+    def test_short_intent_id_format(self, cfg: VPAConfig) -> None:
+        intent = evaluate_risk(_short_match(), 100.0, _account(), _context(), cfg)
+        assert intent.intent_id == "TI-ENTRY-SHORT-1-bar5"
+        assert intent.setup == "ENTRY-SHORT-1"
+        assert intent.direction == "SHORT"
