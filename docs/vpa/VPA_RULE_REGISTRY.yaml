@@ -127,6 +127,28 @@ rules:
     tests_required:
       - "FXT-WEAK-2-basic"
 
+  - id: "CLIMAX-SELL-1"
+    type: "atomic_rule"
+    class: "WEAKNESS"
+    direction_bias: "BEARISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "candle_patterns.shooting_star"
+    conditions:
+      all:
+        - "Shooting star geometry (same thresholds as WEAK-1)"
+        - "volState in {HIGH, ULTRA_HIGH}"
+    emits:
+      signal_event: "SELLING_CLIMAX_TOPPING"
+    notes: >
+      Single-bar climax detection. Deep upper wick + high volume = smart money
+      distributing. Couling: one of the most powerful combinations. Repetition
+      counting for full pattern handled by Setup Composer.
+    tests_required:
+      - "FXT-CLIMAX-SELL-1-basic"
+
   - id: "ANOM-2"
     type: "atomic_rule"
     class: "ANOMALY"

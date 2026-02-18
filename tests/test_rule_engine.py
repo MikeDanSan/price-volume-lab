@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -474,6 +474,87 @@ class TestWEAK2:
         w2 = detect_weak_2(f, cfg)
         assert w1 is not None and w2 is not None
         assert w2.priority < w1.priority
+
+
+# ---------------------------------------------------------------------------
+# CLIMAX-SELL-1: shooting star shape + HIGH/ULTRA_HIGH volume = selling climax
+# ---------------------------------------------------------------------------
+
+
+class TestCLIMAXSELL1:
+    """FXT-CLIMAX-SELL-1-basic: shooting star shape + high volume fires."""
+
+    def _climax_bar(self, **kw) -> CandleFeatures:
+        """Classic shooting star with HIGH volume."""
+        defaults = dict(
+            upper_wick=7.0, spread_val=2.0, lower_wick=1.0, range_val=10.0,
+            vol_state=VolumeState.HIGH,
+        )
+        defaults.update(kw)
+        return _features(**defaults)
+
+    def test_fires_on_shooting_star_high_vol(self, cfg: VPAConfig) -> None:
+        f = self._climax_bar()
+        signal = detect_climax_sell_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "CLIMAX-SELL-1"
+        assert signal.name == "SellingClimax_Distribution"
+        assert signal.signal_class == SignalClass.WEAKNESS
+        assert signal.direction_bias == "BEARISH"
+        assert signal.requires_context_gate is True
+        assert signal.priority == 1
+
+    def test_fires_on_ultra_high_vol(self, cfg: VPAConfig) -> None:
+        f = self._climax_bar(vol_state=VolumeState.ULTRA_HIGH)
+        signal = detect_climax_sell_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "CLIMAX-SELL-1"
+
+    def test_no_fire_average_volume(self, cfg: VPAConfig) -> None:
+        f = self._climax_bar(vol_state=VolumeState.AVERAGE)
+        assert detect_climax_sell_1(f, cfg) is None
+
+    def test_no_fire_low_volume(self, cfg: VPAConfig) -> None:
+        """LOW volume shooting star is WEAK-2, not CLIMAX-SELL-1."""
+        f = self._climax_bar(vol_state=VolumeState.LOW)
+        assert detect_climax_sell_1(f, cfg) is None
+
+    def test_no_fire_small_upper_wick(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=4.0, spread_val=2.0, lower_wick=1.0, range_val=10.0,
+            vol_state=VolumeState.HIGH,
+        )
+        assert detect_climax_sell_1(f, cfg) is None
+
+    def test_no_fire_zero_range(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=0.0, spread_val=0.0, lower_wick=0.0, range_val=0.0,
+            vol_state=VolumeState.HIGH,
+        )
+        assert detect_climax_sell_1(f, cfg) is None
+
+    def test_evidence_payload(self, cfg: VPAConfig) -> None:
+        f = self._climax_bar(vol_state=VolumeState.ULTRA_HIGH, vol_rel=2.5)
+        signal = detect_climax_sell_1(f, cfg)
+        assert signal is not None
+        assert signal.evidence["vol_state"] == "ULTRA_HIGH"
+        assert signal.evidence["vol_rel"] == 2.5
+        assert signal.evidence["upper_wick_ratio"] == 0.7
+
+    def test_weak_1_also_fires_same_bar(self, cfg: VPAConfig) -> None:
+        """WEAK-1 fires on any volume shooting star; CLIMAX-SELL-1 only on high vol."""
+        f = self._climax_bar()
+        assert detect_weak_1(f, cfg) is not None
+        assert detect_climax_sell_1(f, cfg) is not None
+
+    def test_mutual_exclusion_with_weak_2(self, cfg: VPAConfig) -> None:
+        """LOW vol = WEAK-2, HIGH vol = CLIMAX-SELL-1. Never both on same bar."""
+        low = self._climax_bar(vol_state=VolumeState.LOW)
+        high = self._climax_bar(vol_state=VolumeState.HIGH)
+        assert detect_weak_2(low, cfg) is not None
+        assert detect_climax_sell_1(low, cfg) is None
+        assert detect_climax_sell_1(high, cfg) is not None
+        assert detect_weak_2(high, cfg) is None
 
 
 # ---------------------------------------------------------------------------

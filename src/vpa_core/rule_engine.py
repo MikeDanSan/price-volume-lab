@@ -16,6 +16,7 @@ Canonical rules implemented:
     STR-1      — Hammer (strength: selling absorbed, reversal candidate)
     WEAK-1     — Shooting star (weakness: demand exhaustion)
     WEAK-2     — Shooting star + LOW volume (no demand)
+    CLIMAX-SELL-1 — Selling climax bar (deep upper wick + high vol at top)
     CONF-1     — Positive response (confirmation candle)
     AVOID-NEWS-1 — Long-legged doji on low volume (manipulation/stand-aside)
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
@@ -285,6 +286,68 @@ def detect_weak_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | 
 
 
 # ---------------------------------------------------------------------------
+# CLIMAX-SELL-1 — Selling climax bar (deep upper wick + high volume)
+# Registry: shooting star shape + volState in {HIGH, ULTRA_HIGH}
+# ---------------------------------------------------------------------------
+
+
+def detect_climax_sell_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect CLIMAX-SELL-1: selling climax bar — surges higher then closes
+    back near open on high/ultra-high volume.
+
+    Conditions (from VPA_ACTIONABLE_RULES section 7):
+        - range > 0
+        - Shooting star geometry (same thresholds as WEAK-1)
+        - volState in {HIGH, ULTRA_HIGH}
+
+    Couling: deep upper wick + high volume is one of the most powerful
+    combinations. Signals distribution / smart-money selling into retail
+    buying. Repeated occurrences = market ready to move fast downward.
+
+    Single-bar detection. Repetition counting (>= 2 within window) is
+    handled by the Setup Composer for ENTRY-SHORT-1.
+
+    Requires CTX-1 gate (trend location / distribution context needed).
+    """
+    rng = features.range
+    if rng <= 0:
+        return None
+
+    if features.vol_state not in (VolumeState.HIGH, VolumeState.ULTRA_HIGH):
+        return None
+
+    ss = config.candle_patterns.shooting_star
+    upper_ratio = features.upper_wick / rng
+    body_ratio = features.spread / rng
+    lower_ratio = features.lower_wick / rng
+
+    if upper_ratio < ss.upper_wick_ratio_min:
+        return None
+    if body_ratio > ss.body_ratio_max:
+        return None
+    if lower_ratio > ss.lower_wick_ratio_max:
+        return None
+
+    return SignalEvent(
+        id="CLIMAX-SELL-1",
+        name="SellingClimax_Distribution",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.WEAKNESS,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={
+            "upper_wick_ratio": round(upper_ratio, 4),
+            "body_ratio": round(body_ratio, 4),
+            "lower_wick_ratio": round(lower_ratio, 4),
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # ANOM-2 — "Big effort, little result" (absorption/weakness)
 # Registry: volState in {HIGH, ULTRA_HIGH}, spreadState in {NARROW, NORMAL}
 # ---------------------------------------------------------------------------
@@ -487,6 +550,7 @@ _RULE_DETECTORS = [
     detect_str_1,
     detect_weak_1,
     detect_weak_2,
+    detect_climax_sell_1,
     detect_conf_1,
     detect_avoid_news_1,
     detect_test_sup_1,

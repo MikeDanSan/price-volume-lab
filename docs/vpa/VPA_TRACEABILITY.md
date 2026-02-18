@@ -36,6 +36,7 @@
 | CONF-1 | Positive response (confirmation) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_conf_1` | `tests/test_rule_engine.py::TestCONF1` (9 tests) | **OK** | UP bar + non-LOW volume + non-NARROW spread. No gate (prior signal's gate suffices). |
 | AVOID-NEWS-1 | Long-legged doji on LOW vol (stand-aside) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_avoid_news_1` | `tests/test_rule_engine.py::TestAVOIDNEWS1` (10 tests) | **OK** | Config-driven body/wick ratios + LOW volume. Priority=0 (highest). No gate. |
 | WEAK-2 | Shooting star + LOW vol (no demand) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_weak_2` | `tests/test_rule_engine.py::TestWEAK2` (8 tests) | **OK** | WEAK-1 shape + LOW volume. Higher priority than WEAK-1 (more decisive). Requires CTX-1 gate. |
+| CLIMAX-SELL-1 | Selling climax bar | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_climax_sell_1` | `tests/test_rule_engine.py::TestCLIMAXSELL1` (9 tests) | **OK** | Shooting star shape + HIGH/ULTRA_HIGH volume. Single-bar detection; repetition in Setup Composer. Requires CTX-1 gate. |
 | TEST-SUP-1 | Test of supply (pass) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_test_sup_1` | `tests/test_rule_engine.py::TestTESTSUP1` (7 tests) | **OK** | LOW volume + NARROW/NORMAL spread. Requires CTX-1 gate. Bar_low enriched by pipeline for stop placement. |
 
 ### 3.3 Rules defined in docs but NOT yet implemented
@@ -49,7 +50,7 @@
 | WEAK-2 | Shooting star + LOW vol = no demand | VPA_ACTIONABLE_RULES §5 / VPA_RULE_REGISTRY.yaml | **OK** | Implemented Commit 30. |
 | TEST-SUP-2 | Failed test of supply | VPA_ACTIONABLE_RULES §6 | **MISSING** | Planned Phase I. |
 | TEST-DEM-1 | Test of demand (pass) | VPA_ACTIONABLE_RULES §6 | **MISSING** | Planned Phase I. |
-| CLIMAX-SELL-1 | Selling climax (topping) | VPA_ACTIONABLE_RULES §7 | **MISSING** | Planned Phase G (Commit 31). |
+| CLIMAX-SELL-1 | Selling climax (topping) | VPA_ACTIONABLE_RULES §7 / VPA_RULE_REGISTRY.yaml | **OK** | Implemented Commit 31. Single-bar detection; repetition in Setup Composer. |
 | CLIMAX-SELL-2 | Upper-wick repetition emphasis | VPA_ACTIONABLE_RULES §7 | **MISSING** | Planned Phase I. |
 | AVOID-TRAP-1 | Trap-up anomaly without confirmation | VPA_ACTIONABLE_RULES §8 | **MISSING** | Planned Phase I. |
 | AVOID-COUNTER-1 | Counter-dominant entries | VPA_ACTIONABLE_RULES §8 | **MISSING** | Planned Phase I. |
@@ -94,4 +95,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 14 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, WEAK-2, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, CTX-2, CTX-3, ENTRY-LONG-1, ENTRY-LONG-2), 0 PARTIAL, 12 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 15 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, WEAK-2, CLIMAX-SELL-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, CTX-2, CTX-3, ENTRY-LONG-1, ENTRY-LONG-2), 0 PARTIAL, 11 MISSING, 0 DRIFT, 0 EXTRA.**
