@@ -1,9 +1,12 @@
 """
-Orchestrate setup detection and produce Signal + TradePlan.
+DEPRECATED — Use ``vpa_core.pipeline.run_pipeline`` instead.
 
-Pure pipeline: context window -> features + rel vol + context -> setup match
--> Signal -> TradePlan. No I/O; fully deterministic.
+This module exists only for backward compatibility with the legacy
+CLI and backtest runner.  It will be removed once all callers have
+migrated to the canonical pipeline (Commit 12+).
 """
+
+import warnings
 
 from vpa_core.contracts import (
     Bar,
@@ -15,10 +18,12 @@ from vpa_core.setups.no_demand import check_no_demand
 
 
 def evaluate(window: ContextWindow) -> list[tuple[Signal, TradePlan]]:
-    """
-    Evaluate the context window and return all (Signal, TradePlan) pairs
-    for detected setups. Typically zero or one for MVP.
-    """
+    """DEPRECATED: Use ``vpa_core.pipeline.run_pipeline`` instead."""
+    warnings.warn(
+        "signals.evaluate() is deprecated — use vpa_core.pipeline.run_pipeline()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     bars = list(window.bars)
     if not bars:
         return []
