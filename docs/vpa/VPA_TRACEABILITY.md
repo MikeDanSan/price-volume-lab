@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-18 (Commit 20)
+**Last updated:** 2026-02-18 (Commit 25)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -22,8 +22,8 @@
 | ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
 |----|------|-------------|---------------|---------------|--------|-------|
 | CTX-1 | Trend-location-first gate | VPA_ACTIONABLE_RULES §2, VPA_RULE_REGISTRY.yaml | `src/vpa_core/context_gates.py` | `tests/test_context_gates.py` | **OK** | Blocks anomaly signals when trendLocation==UNKNOWN. Configurable via `config.gates.ctx1_trend_location_required`. |
-| CTX-2 | Dominant alignment risk gate | VPA_ACTIONABLE_RULES §2 | `src/vpa_core/risk_engine.py` (countertrend multiplier) | `tests/test_risk_engine.py::TestCountertrend` | **PARTIAL** | Risk reduction applied via `countertrend_multiplier` when alignment==AGAINST. Full multi-TF alignment not yet computed. NOT IN REGISTRY. |
-| CTX-3 | Congestion awareness gate | VPA_ACTIONABLE_RULES §2 | — | — | **MISSING** | `Congestion` dataclass exists in contracts but no detection logic. NOT IN REGISTRY. |
+| CTX-2 | Dominant alignment gate | VPA_ACTIONABLE_RULES §2 | `src/vpa_core/context_gates.py::_check_ctx_2` + `src/vpa_core/risk_engine.py` | `tests/test_context_gates.py::TestCTX2*` + `tests/test_risk_engine.py::TestCountertrend` | **OK** | Policy-driven: DISALLOW blocks at gate; REDUCE_RISK adjusts sizing in Risk Engine; ALLOW disables. Multi-TF alignment not yet computed (returns UNKNOWN). |
+| CTX-3 | Congestion awareness gate | VPA_ACTIONABLE_RULES §2 | — | — | **MISSING** | `Congestion` detected by context engine (Commit 24) but no gate logic yet. NOT IN REGISTRY. |
 
 ### 3.2 Atomic Rules (registered in YAML)
 | ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
@@ -98,4 +98,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 11 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1, ENTRY-LONG-2), 1 PARTIAL (CTX-2), 14 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 12 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, CTX-2, ENTRY-LONG-1, ENTRY-LONG-2), 0 PARTIAL, 14 MISSING, 0 DRIFT, 0 EXTRA.**

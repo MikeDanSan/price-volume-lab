@@ -1,4 +1,4 @@
-"""Tests for Context Gates: CTX-1 trend-location-first gate."""
+"""Tests for Context Gates: CTX-1 and CTX-2."""
 
 from datetime import datetime, timezone
 
@@ -8,6 +8,7 @@ from config.vpa_config import load_vpa_config, VPAConfig
 from vpa_core.contracts import (
     Congestion,
     ContextSnapshot,
+    DominantAlignment,
     SignalClass,
     SignalEvent,
     Trend,
@@ -44,13 +45,18 @@ def _signal(
     )
 
 
-def _context(*, trend_location: TrendLocation = TrendLocation.TOP) -> ContextSnapshot:
+def _context(
+    *,
+    trend_location: TrendLocation = TrendLocation.TOP,
+    dominant_alignment: DominantAlignment = DominantAlignment.WITH,
+) -> ContextSnapshot:
     return ContextSnapshot(
         tf="15m",
         trend=Trend.UP,
         trend_strength=TrendStrength.MODERATE,
         trend_location=trend_location,
         congestion=Congestion(active=False),
+        dominant_alignment=dominant_alignment,
     )
 
 
@@ -165,3 +171,121 @@ class TestEdgeCases:
         result = apply_gates([], _context(), cfg)
         with pytest.raises(AttributeError):
             result.actionable = []  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# CTX-2: dominant alignment gate
+# ---------------------------------------------------------------------------
+
+
+def _cfg_with_ctx2_policy(tmp_path, policy: str) -> VPAConfig:
+    """Load config with a specific ctx2 policy."""
+    import json
+    from config.vpa_config import load_vpa_config, DEFAULT_CONFIG_PATH
+
+    with open(DEFAULT_CONFIG_PATH) as f:
+        data = json.load(f)
+    data["gates"]["ctx2_dominant_alignment_policy"] = policy
+    p = tmp_path / f"ctx2_{policy.lower()}.json"
+    p.write_text(json.dumps(data))
+    return load_vpa_config(config_path=p)
+
+
+class TestCTX2Disallow:
+    """When policy is DISALLOW, gated signals blocked if dominant_alignment == AGAINST."""
+
+    def test_gated_signal_blocked_when_against(self, tmp_path) -> None:
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        signals = [_signal(requires_gate=True)]
+        context = _context(dominant_alignment=DominantAlignment.AGAINST)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.blocked) == 1
+        assert len(result.actionable) == 0
+        assert "CTX-2" in list(result.block_reasons.values())[0]
+
+    def test_gated_signal_passes_when_with(self, tmp_path) -> None:
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        signals = [_signal(requires_gate=True)]
+        context = _context(dominant_alignment=DominantAlignment.WITH)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+    def test_gated_signal_passes_when_unknown(self, tmp_path) -> None:
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        signals = [_signal(requires_gate=True)]
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+    def test_non_gated_signal_passes_even_when_against(self, tmp_path) -> None:
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        signals = [_signal(rule_id="VAL-1", signal_class=SignalClass.VALIDATION, requires_gate=False)]
+        context = _context(dominant_alignment=DominantAlignment.AGAINST)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+
+class TestCTX2ReduceRisk:
+    """When policy is REDUCE_RISK, gate passes all signals — Risk Engine handles sizing."""
+
+    def test_against_signal_not_blocked(self, cfg: VPAConfig) -> None:
+        """Default config policy is REDUCE_RISK."""
+        assert cfg.gates.ctx2_dominant_alignment_policy == "REDUCE_RISK"
+        signals = [_signal(requires_gate=True)]
+        context = _context(dominant_alignment=DominantAlignment.AGAINST)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+
+class TestCTX2Allow:
+    """When policy is ALLOW, gate passes all signals — CTX-2 fully disabled."""
+
+    def test_against_signal_not_blocked(self, tmp_path) -> None:
+        cfg = _cfg_with_ctx2_policy(tmp_path, "ALLOW")
+        signals = [_signal(requires_gate=True)]
+        context = _context(dominant_alignment=DominantAlignment.AGAINST)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+
+class TestCTX1AndCTX2Interaction:
+    """Verify gate ordering: CTX-1 checked before CTX-2."""
+
+    def test_ctx1_blocks_before_ctx2_checked(self, tmp_path) -> None:
+        """If CTX-1 blocks (UNKNOWN location), CTX-2 reason doesn't appear."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        signals = [_signal(requires_gate=True)]
+        context = _context(
+            trend_location=TrendLocation.UNKNOWN,
+            dominant_alignment=DominantAlignment.AGAINST,
+        )
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.blocked) == 1
+        reason = list(result.block_reasons.values())[0]
+        assert "CTX-1" in reason
+
+    def test_ctx2_blocks_when_ctx1_passes(self, tmp_path) -> None:
+        """CTX-1 passes (known location), then CTX-2 blocks (DISALLOW + AGAINST)."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        signals = [_signal(requires_gate=True)]
+        context = _context(
+            trend_location=TrendLocation.TOP,
+            dominant_alignment=DominantAlignment.AGAINST,
+        )
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.blocked) == 1
+        reason = list(result.block_reasons.values())[0]
+        assert "CTX-2" in reason

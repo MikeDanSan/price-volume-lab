@@ -62,6 +62,19 @@ def _account(equity: float = 100_000.0, positions: int = 0, daily_pnl: float = 0
     return AccountState(equity=equity, open_position_count=positions, daily_realized_pnl=daily_pnl)
 
 
+def _cfg_with_policy(tmp_path, policy: str) -> VPAConfig:
+    """Load config with a specific ctx2_dominant_alignment_policy."""
+    import json
+    from config.vpa_config import DEFAULT_CONFIG_PATH
+
+    with open(DEFAULT_CONFIG_PATH) as f:
+        data = json.load(f)
+    data["gates"]["ctx2_dominant_alignment_policy"] = policy
+    p = tmp_path / f"risk_{policy.lower()}.json"
+    p.write_text(json.dumps(data))
+    return load_vpa_config(config_path=p)
+
+
 # ---------------------------------------------------------------------------
 # Sizing calculation
 # ---------------------------------------------------------------------------
@@ -100,22 +113,40 @@ class TestSizing:
 
 
 class TestCountertrend:
+    """CTX-2 risk reduction — only active when policy is REDUCE_RISK."""
+
     def test_with_trend_full_risk(self, cfg: VPAConfig) -> None:
+        """Default policy is REDUCE_RISK; WITH alignment gets full risk + annotation."""
+        assert cfg.gates.ctx2_dominant_alignment_policy == "REDUCE_RISK"
         intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(DominantAlignment.WITH), cfg)
         assert intent.risk_plan.risk_pct == 0.005
         assert "CTX-2:WITH" in intent.rationale
 
     def test_against_trend_reduced_risk(self, cfg: VPAConfig) -> None:
-        """Against dominant trend: risk_pct *= countertrend_multiplier (0.5)."""
+        """Against dominant trend + REDUCE_RISK policy: risk_pct *= countertrend_multiplier (0.5)."""
         intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(DominantAlignment.AGAINST), cfg)
         assert intent.risk_plan.risk_pct == pytest.approx(0.0025)
-        # size = (100000 * 0.0025) / 2 = 125
         assert intent.risk_plan.size == 125
         assert "CTX-2:AGAINST(risk_reduced)" in intent.rationale
 
     def test_unknown_alignment_full_risk(self, cfg: VPAConfig) -> None:
         intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(DominantAlignment.UNKNOWN), cfg)
         assert intent.risk_plan.risk_pct == 0.005
+        assert not any("CTX-2" in r for r in intent.rationale)
+
+    def test_allow_policy_no_reduction(self, tmp_path) -> None:
+        """ALLOW policy: AGAINST alignment does NOT reduce risk."""
+        cfg = _cfg_with_policy(tmp_path, "ALLOW")
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(DominantAlignment.AGAINST), cfg)
+        assert intent.risk_plan.risk_pct == 0.005
+        assert not any("CTX-2" in r for r in intent.rationale)
+
+    def test_disallow_policy_no_reduction(self, tmp_path) -> None:
+        """DISALLOW policy: no risk reduction (gate already blocked the signal)."""
+        cfg = _cfg_with_policy(tmp_path, "DISALLOW")
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(DominantAlignment.AGAINST), cfg)
+        assert intent.risk_plan.risk_pct == 0.005
+        assert not any("CTX-2" in r for r in intent.rationale)
 
 
 # ---------------------------------------------------------------------------

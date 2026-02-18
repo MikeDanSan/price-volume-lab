@@ -121,12 +121,12 @@ def evaluate_risk(
     stop = _compute_stop(match, current_price)
     risk_pct = config.risk.risk_pct_per_trade
 
-    if context.dominant_alignment == DominantAlignment.AGAINST:
-        risk_pct *= config.risk.countertrend_multiplier
-        rationale.append("CTX-2:AGAINST(risk_reduced)")
-
-    if context.dominant_alignment == DominantAlignment.WITH:
-        rationale.append("CTX-2:WITH")
+    if config.gates.ctx2_dominant_alignment_policy == "REDUCE_RISK":
+        if context.dominant_alignment == DominantAlignment.AGAINST:
+            risk_pct *= config.risk.countertrend_multiplier
+            rationale.append("CTX-2:AGAINST(risk_reduced)")
+        elif context.dominant_alignment == DominantAlignment.WITH:
+            rationale.append("CTX-2:WITH")
 
     size = _compute_size(account.equity, risk_pct, current_price, stop)
 
