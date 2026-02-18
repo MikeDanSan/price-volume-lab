@@ -161,10 +161,16 @@ def scan(ctx: click.Context, window: int) -> None:
 
 @cli.command()
 @click.option("--window", default=50, help="Context window size.")
+@click.option("--live", is_flag=True, default=False, help="Run continuously, evaluating each bar close during market hours.")
 @click.pass_context
-def paper(ctx: click.Context, window: int) -> None:
+def paper(ctx: click.Context, window: int, live: bool) -> None:
     """Evaluate latest window; if signal found, submit paper order. Shows full reasoning."""
     cfg = load_config(ctx.obj["config_path"])
+
+    if live:
+        from cli.scheduler import run_live_loop
+        run_live_loop(cfg, window)
+        return
     from cli.output import format_pipeline_scan
     from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
