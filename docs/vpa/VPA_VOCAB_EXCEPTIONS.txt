@@ -13,6 +13,11 @@ CANONICAL_CONTRACT.md
 VPA_DOC_INDEX.md
 COMPLIANCE_REPORT.md
 FIX_PLAN.md
+vpa_prompting_guide.md
+DECISIONS.md
+README.md
+vpa_vocab_lint.py
+test_vocab_lint.py
 Cursor
 Copilot
 Claude
