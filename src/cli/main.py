@@ -185,23 +185,65 @@ def scan(ctx: click.Context, window: int) -> None:
 def paper(ctx: click.Context, window: int) -> None:
     """Evaluate latest window; if signal found, submit paper order. Shows full reasoning."""
     cfg = load_config(ctx.obj["config_path"])
-    from cli.output import format_scan_result, format_signal
+    from cli.output import format_pipeline_scan
+    from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
-    from data.context_window import get_context_window
     from execution import PaperExecutor
     from journal import JournalWriter
-    from vpa_core.signals import evaluate
+    from vpa_core.contracts import (
+        Congestion,
+        ContextSnapshot,
+        DominantAlignment,
+        Trend,
+        TrendLocation,
+        TrendStrength,
+    )
+    from vpa_core.context import CONTEXT_DOWNTREND, CONTEXT_UPTREND, detect_context
+    from vpa_core.pipeline import run_pipeline
+    from vpa_core.risk_engine import AccountState
+    from vpa_core.setup_composer import SetupComposer
 
     store = BarStore(cfg.data.bar_store_path)
-    ctx_window = get_context_window(store, cfg.symbol, cfg.timeframe, window_size=window)
-    if ctx_window is None:
-        click.echo("No bars in store. Run 'vpa ingest' first.")
+    bars = store.get_bars(cfg.symbol, cfg.timeframe)
+    if not bars or len(bars) < 2:
+        click.echo("Not enough bars in store. Run 'vpa ingest' first.")
         return
 
-    results = evaluate(ctx_window)
-    click.echo(format_scan_result(ctx_window, results))
+    bars = bars[-window:]
+    vpa_cfg = load_vpa_config()
+    composer = SetupComposer(vpa_cfg)
+    bar_index = len(bars) - 1
 
-    if not results:
+    trend_str = detect_context(bars, lookback=vpa_cfg.trend.window_K)
+    if trend_str == CONTEXT_UPTREND:
+        trend, location = Trend.UP, TrendLocation.BOTTOM
+    elif trend_str == CONTEXT_DOWNTREND:
+        trend, location = Trend.DOWN, TrendLocation.TOP
+    else:
+        trend, location = Trend.RANGE, TrendLocation.MIDDLE
+
+    context = ContextSnapshot(
+        tf=cfg.timeframe,
+        trend=trend,
+        trend_strength=TrendStrength.MODERATE,
+        trend_location=location,
+        congestion=Congestion(active=False),
+        dominant_alignment=DominantAlignment.WITH,
+    )
+
+    account = AccountState(equity=cfg.execution.initial_cash)
+    result = run_pipeline(
+        bars, bar_index=bar_index, context=context,
+        account=account, config=vpa_cfg, composer=composer, tf=cfg.timeframe,
+    )
+
+    click.echo(format_pipeline_scan(
+        bar=bars[-1], features=result.features, context=context,
+        result=result, symbol=cfg.symbol, timeframe=cfg.timeframe,
+    ))
+
+    ready_intents = [i for i in result.intents if i.status.value == "READY"]
+    if not ready_intents:
         return
 
     executor = PaperExecutor(
@@ -211,17 +253,14 @@ def paper(ctx: click.Context, window: int) -> None:
         initial_cash=cfg.execution.initial_cash,
     )
     journal = JournalWriter(cfg.journal.path, echo_stdout=cfg.journal.echo_stdout)
-    current_bar = ctx_window.current_bar()
-    if current_bar is None:
-        return
 
-    for signal, plan in results:
-        order = executor.submit(cfg.symbol, plan, current_bar.close)
+    for intent in ready_intents:
+        order = executor.submit_intent(cfg.symbol, intent, bars[-1].close)
         if order:
-            journal.signal(signal.setup_type, signal.direction, signal.rationale, signal.rulebook_ref)
-            journal.trade_plan(plan.signal_id, plan.setup_type, plan.direction, plan.rationale, plan.rulebook_ref)
+            rationale_str = " -> ".join(intent.rationale)
+            journal.signal(intent.setup, intent.direction, rationale_str, intent.setup)
             click.echo(f"\n  Paper order submitted: {order.side} {order.qty} {order.symbol} @ market")
-            click.echo(f"  Trade plan ref: {order.trade_plan_ref}")
+            click.echo(f"  Setup: {intent.setup}  Stop: {intent.risk_plan.stop:.2f}")
         else:
             click.echo(f"\n  Order rejected (risk limit or existing position for {cfg.symbol}).")
         break  # single position

@@ -86,8 +86,36 @@ def test_cli_status(tmp_config: Path) -> None:
 def test_cli_paper(tmp_config: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--config", str(tmp_config), "paper"])
+    assert result.exit_code == 0, result.output
+    assert "VPA Pipeline Scan" in result.output
+    assert "Volume" in result.output
+    assert "Spread" in result.output
+
+
+def test_cli_paper_empty_store(tmp_path: Path) -> None:
+    db_path = tmp_path / "empty.db"
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"""
+symbol: SPY
+timeframe: "15m"
+data:
+  source: alpaca
+  bar_store_path: "{db_path}"
+execution:
+  state_path: "{tmp_path / 'state.db'}"
+  initial_cash: 100000
+journal:
+  path: "{tmp_path / 'journal.jsonl'}"
+  echo_stdout: false
+"""
+    )
+    from data.bar_store import BarStore
+    BarStore(str(db_path))
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--config", str(config_path), "paper"])
     assert result.exit_code == 0
-    assert "VPA Analysis" in result.output
+    assert "Not enough bars" in result.output or "No bars" in result.output
 
 
 def test_cli_scan_empty_store(tmp_path: Path) -> None:

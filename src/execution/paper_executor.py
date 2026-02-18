@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from vpa_core.contracts import TradePlan
+from vpa_core.contracts import TradeIntent, TradeIntentStatus, TradePlan
 
 from execution.models import Fill, Order, Position
 
@@ -103,8 +103,78 @@ class PaperExecutor:
             c.execute("UPDATE cash SET balance = ? WHERE id = 1", (balance,))
 
     def submit(self, symbol: str, plan: TradePlan, current_price: float, *, slippage_bps: float = 5.0) -> Order | None:
-        """Convert TradePlan to order if risk limits allow. Returns Order or None."""
+        """DEPRECATED: use submit_intent(). Convert TradePlan to order if risk limits allow."""
         return self._submit_impl(plan, symbol, current_price, slippage_bps)
+
+    def submit_intent(
+        self,
+        symbol: str,
+        intent: TradeIntent,
+        fill_price: float,
+        *,
+        slippage_bps: float = 5.0,
+    ) -> Order | None:
+        """Submit a canonical TradeIntent as a paper order.
+
+        Uses the Risk Engine's pre-computed size and stop rather than
+        re-calculating. Only READY intents are accepted.
+        """
+        if intent.status != TradeIntentStatus.READY:
+            return None
+
+        is_long = intent.direction == "LONG"
+        side = "buy" if is_long else "sell"
+        qty = intent.risk_plan.size
+        if qty <= 0:
+            return None
+
+        with self._conn() as c:
+            pos_row = c.execute(
+                "SELECT qty FROM positions WHERE symbol = ?", (symbol,)
+            ).fetchone()
+            if pos_row and pos_row[0] != 0:
+                return None
+
+            cash = self._get_cash()
+            cost = fill_price * qty
+            if is_long and cost > cash:
+                qty = int(cash / fill_price)
+            if qty <= 0:
+                return None
+
+            order_id = str(uuid.uuid4())
+            ts = _utc(datetime.now(timezone.utc)).isoformat()
+            c.execute(
+                """INSERT INTO orders (id, symbol, side, qty, order_type, ts_utc, trade_plan_ref, limit_price)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (order_id, symbol, side, qty, "market", ts, intent.setup, None),
+            )
+            adj = 1 + slippage_bps / 10_000 if is_long else 1 - slippage_bps / 10_000
+            actual_price = fill_price * adj
+            fill_id = str(uuid.uuid4())
+            c.execute(
+                """INSERT INTO fills (id, order_id, symbol, side, qty, price, ts_utc, slippage_bps)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (fill_id, order_id, symbol, side, qty, actual_price, ts, slippage_bps),
+            )
+            c.execute(
+                """INSERT OR REPLACE INTO positions (symbol, side, qty, avg_price, updated_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (symbol, intent.direction, qty if is_long else -qty, actual_price, ts),
+            )
+            if is_long:
+                c.execute("UPDATE cash SET balance = balance - ?", (actual_price * qty,))
+
+        return Order(
+            id=order_id,
+            symbol=symbol,
+            side=side,
+            qty=qty,
+            order_type="market",
+            timestamp=datetime.fromisoformat(ts.replace("Z", "+00:00")),
+            trade_plan_ref=intent.setup,
+            limit_price=None,
+        )
 
     def _submit_impl(
         self,
