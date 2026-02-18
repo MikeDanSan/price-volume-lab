@@ -24,9 +24,8 @@
           "name": "BigResultLittleEffort_TrapUpWarning",
           "directionBias": "BEARISH_OR_WAIT",
           "evidence": {
-            "candleType": "UP",
-            "spreadState": "WIDE",
-            "volState": "LOW"
+            "spread_state": "WIDE",
+            "vol_state": "LOW"
           }
         }
       ]

@@ -1,0 +1,29 @@
+{
+  "fixtureId": "FXT-INTEG-anom1-no-setup",
+  "type": "integration",
+  "targets": ["ANOM-1"],
+  "timeframe": "15m",
+  "description": "ANOM-1 fires but no setup completes (single anomaly bar, no sequence).",
+  "configOverrides": {
+    "vol": { "avg_window_N": 5 },
+    "spread": { "avg_window_M": 5 }
+  },
+  "inputs": {
+    "bars": [
+      { "ts": "2026-02-17T14:00:00Z", "open": 100, "high": 101, "low": 99.8, "close": 100.2, "volume": 1000 },
+      { "ts": "2026-02-17T14:15:00Z", "open": 100.2, "high": 101.2, "low": 100.1, "close": 101.1, "volume": 950 },
+      { "ts": "2026-02-17T14:30:00Z", "open": 101.1, "high": 101.5, "low": 100.5, "close": 101.3, "volume": 1020 },
+      { "ts": "2026-02-17T14:45:00Z", "open": 101.3, "high": 101.8, "low": 100.8, "close": 101.5, "volume": 980 },
+      { "ts": "2026-02-17T15:00:00Z", "open": 101.5, "high": 102.0, "low": 101.0, "close": 101.7, "volume": 990 },
+      { "ts": "2026-02-17T15:15:00Z", "open": 101.7, "high": 104.5, "low": 101.5, "close": 104.0, "volume": 400 }
+    ]
+  },
+  "expected": {
+    "signals": [
+      {
+        "id": "ANOM-1",
+        "class": "ANOMALY"
+      }
+    ]
+  }
+}

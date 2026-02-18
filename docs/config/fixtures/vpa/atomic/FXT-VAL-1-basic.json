@@ -1,0 +1,31 @@
+{
+  "fixtureId": "FXT-VAL-1-basic",
+  "type": "atomic",
+  "targets": ["VAL-1"],
+  "timeframe": "15m",
+  "configOverrides": {
+    "vol": { "avg_window_N": 5 },
+    "spread": { "avg_window_M": 5 }
+  },
+  "inputs": {
+    "bars": [
+      { "ts": "2026-02-17T14:00:00Z", "open": 100, "high": 101, "low": 99.8, "close": 100.5, "volume": 1000 },
+      { "ts": "2026-02-17T14:15:00Z", "open": 100.5, "high": 101.5, "low": 100.0, "close": 101.0, "volume": 1050 },
+      { "ts": "2026-02-17T14:30:00Z", "open": 101.0, "high": 104.0, "low": 100.8, "close": 103.5, "volume": 1500 }
+    ]
+  },
+  "expected": {
+    "signals": [
+      {
+        "id": "VAL-1",
+        "class": "VALIDATION",
+        "name": "SingleBarValidation_BullishDrive",
+        "directionBias": "BULLISH",
+        "evidence": {
+          "spread_state": "WIDE",
+          "vol_state": "HIGH"
+        }
+      }
+    ]
+  }
+}

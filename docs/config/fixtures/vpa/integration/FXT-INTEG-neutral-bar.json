@@ -1,0 +1,24 @@
+{
+  "fixtureId": "FXT-INTEG-neutral-bar",
+  "type": "integration",
+  "targets": [],
+  "timeframe": "15m",
+  "description": "Average volume, normal spread, down bar — no VPA signals expected.",
+  "configOverrides": {
+    "vol": { "avg_window_N": 5 },
+    "spread": { "avg_window_M": 5 }
+  },
+  "inputs": {
+    "bars": [
+      { "ts": "2026-02-17T14:00:00Z", "open": 100, "high": 101, "low": 99.5, "close": 100.5, "volume": 1000 },
+      { "ts": "2026-02-17T14:15:00Z", "open": 100.5, "high": 101.5, "low": 100.0, "close": 101.0, "volume": 1050 },
+      { "ts": "2026-02-17T14:30:00Z", "open": 101.0, "high": 101.8, "low": 100.2, "close": 101.2, "volume": 980 },
+      { "ts": "2026-02-17T14:45:00Z", "open": 101.2, "high": 102.0, "low": 100.5, "close": 101.4, "volume": 1020 },
+      { "ts": "2026-02-17T15:00:00Z", "open": 101.4, "high": 102.2, "low": 100.8, "close": 101.6, "volume": 1010 },
+      { "ts": "2026-02-17T15:15:00Z", "open": 101.6, "high": 102.0, "low": 101.0, "close": 101.1, "volume": 1000 }
+    ]
+  },
+  "expected": {
+    "noSignals": true
+  }
+}
