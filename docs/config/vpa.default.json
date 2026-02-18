@@ -22,6 +22,18 @@
     },
     "costs": { "fee_model": "BPS", "fee_value": 0 },
     "slippage": { "model": "BPS", "value": 0 },
+    "candle_patterns": {
+      "hammer": {
+        "lower_wick_ratio_min": 0.60,
+        "body_ratio_max": 0.33,
+        "upper_wick_ratio_max": 0.10
+      },
+      "shooting_star": {
+        "upper_wick_ratio_min": 0.60,
+        "body_ratio_max": 0.33,
+        "lower_wick_ratio_max": 0.10
+      }
+    },
     "risk": {
       "risk_pct_per_trade": 0.005,
       "max_concurrent_positions": 1,

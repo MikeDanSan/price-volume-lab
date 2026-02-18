@@ -100,6 +100,26 @@ class SlippageConfig:
 
 
 @dataclass(frozen=True)
+class HammerConfig:
+    lower_wick_ratio_min: float
+    body_ratio_max: float
+    upper_wick_ratio_max: float
+
+
+@dataclass(frozen=True)
+class ShootingStarConfig:
+    upper_wick_ratio_min: float
+    body_ratio_max: float
+    lower_wick_ratio_max: float
+
+
+@dataclass(frozen=True)
+class CandlePatternsConfig:
+    hammer: HammerConfig
+    shooting_star: ShootingStarConfig
+
+
+@dataclass(frozen=True)
 class RiskConfig:
     risk_pct_per_trade: float
     max_concurrent_positions: int
@@ -119,6 +139,7 @@ class VPAConfig:
     execution: VPAExecutionConfig
     costs: CostsConfig
     slippage: SlippageConfig
+    candle_patterns: CandlePatternsConfig
     risk: RiskConfig
 
 
@@ -148,6 +169,7 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
     vol_raw = data["vol"]
     spread_raw = data["spread"]
     risk_raw = data["risk"]
+    cp_raw = data.get("candle_patterns", {})
 
     return VPAConfig(
         version=data["version"],
@@ -185,6 +207,18 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
         slippage=SlippageConfig(
             model=data["slippage"]["model"],
             value=data["slippage"]["value"],
+        ),
+        candle_patterns=CandlePatternsConfig(
+            hammer=HammerConfig(
+                lower_wick_ratio_min=cp_raw.get("hammer", {}).get("lower_wick_ratio_min", 0.60),
+                body_ratio_max=cp_raw.get("hammer", {}).get("body_ratio_max", 0.33),
+                upper_wick_ratio_max=cp_raw.get("hammer", {}).get("upper_wick_ratio_max", 0.10),
+            ),
+            shooting_star=ShootingStarConfig(
+                upper_wick_ratio_min=cp_raw.get("shooting_star", {}).get("upper_wick_ratio_min", 0.60),
+                body_ratio_max=cp_raw.get("shooting_star", {}).get("body_ratio_max", 0.33),
+                lower_wick_ratio_max=cp_raw.get("shooting_star", {}).get("lower_wick_ratio_max", 0.10),
+            ),
         ),
         risk=RiskConfig(
             risk_pct_per_trade=risk_raw["risk_pct_per_trade"],

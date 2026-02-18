@@ -66,6 +66,27 @@ rules:
     tests_required:
       - "FXT-ANOM-1-basic"
 
+  - id: "STR-1"
+    type: "atomic_rule"
+    class: "STRENGTH"
+    direction_bias: "BULLISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "candle_patterns.hammer"
+    conditions:
+      all:
+        - "lower_wick / range >= hammer.lower_wick_ratio_min"
+        - "spread / range <= hammer.body_ratio_max"
+        - "upper_wick / range <= hammer.upper_wick_ratio_max"
+        - "range > 0"
+    emits:
+      signal_event: "STRENGTH_HAMMER"
+    notes: "Hammer candle: session falls then recovers to close near open. Selling absorbed. Powerful with VPA."
+    tests_required:
+      - "FXT-STR-1-basic"
+
   - id: "ANOM-2"
     type: "atomic_rule"
     class: "ANOMALY"

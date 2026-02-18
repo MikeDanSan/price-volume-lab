@@ -93,6 +93,30 @@
         }
       },
   
+      "candle_patterns": {
+        "type": "object",
+        "properties": {
+          "hammer": {
+            "type": "object",
+            "required": ["lower_wick_ratio_min", "body_ratio_max", "upper_wick_ratio_max"],
+            "properties": {
+              "lower_wick_ratio_min": { "type": "number", "minimum": 0, "maximum": 1 },
+              "body_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 },
+              "upper_wick_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "shooting_star": {
+            "type": "object",
+            "required": ["upper_wick_ratio_min", "body_ratio_max", "lower_wick_ratio_max"],
+            "properties": {
+              "upper_wick_ratio_min": { "type": "number", "minimum": 0, "maximum": 1 },
+              "body_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 },
+              "lower_wick_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      },
+
       "risk": {
         "type": "object",
         "required": ["risk_pct_per_trade", "max_concurrent_positions", "countertrend_multiplier"],

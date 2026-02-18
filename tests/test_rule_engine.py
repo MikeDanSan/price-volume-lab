@@ -1,6 +1,7 @@
 """Tests for Rule Engine: CandleFeatures -> SignalEvent[].
 
-Fixture-driven tests for VAL-1, ANOM-1, TEST-SUP-1 per VPA_RULE_REGISTRY.yaml.
+Fixture-driven tests for VAL-1, ANOM-1, ANOM-2, STR-1, TEST-SUP-1
+per VPA_RULE_REGISTRY.yaml.
 """
 
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_test_sup_1, detect_val_1, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_str_1, detect_test_sup_1, detect_val_1, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -34,15 +35,19 @@ def _features(
     vol_state: VolumeState = VolumeState.AVERAGE,
     vol_rel: float = 1.0,
     spread_rel: float = 1.0,
+    spread_val: float = 3.0,
+    range_val: float = 5.0,
+    upper_wick: float = 1.0,
+    lower_wick: float = 1.0,
 ) -> CandleFeatures:
-    """Build a CandleFeatures with controllable classification fields."""
+    """Build a CandleFeatures with controllable fields."""
     return CandleFeatures(
         ts=TS,
         tf="15m",
-        spread=3.0,
-        range=5.0,
-        upper_wick=1.0,
-        lower_wick=1.0,
+        spread=spread_val,
+        range=range_val,
+        upper_wick=upper_wick,
+        lower_wick=lower_wick,
         spread_rel=spread_rel,
         vol_rel=vol_rel,
         vol_state=vol_state,
@@ -207,6 +212,114 @@ class TestANOM2:
 
 
 # ---------------------------------------------------------------------------
+# STR-1: hammer candle (large lower wick, small body, minimal upper wick)
+# ---------------------------------------------------------------------------
+
+
+class TestSTR1:
+    """FXT-STR-1-basic equivalent."""
+
+    def _hammer(self, **kw) -> CandleFeatures:
+        """Classic hammer: lower_wick=7, body=2, upper_wick=1, range=10."""
+        defaults = dict(
+            lower_wick=7.0, spread_val=2.0, upper_wick=1.0, range_val=10.0,
+        )
+        defaults.update(kw)
+        return _features(**defaults)
+
+    def test_fires_on_classic_hammer(self, cfg: VPAConfig) -> None:
+        f = self._hammer()
+        signal = detect_str_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "STR-1"
+        assert signal.signal_class == SignalClass.STRENGTH
+        assert signal.direction_bias == "BULLISH"
+        assert signal.requires_context_gate is True
+
+    def test_fires_on_down_bar_hammer(self, cfg: VPAConfig) -> None:
+        """Hammer works on both up and down bars (close near open either way)."""
+        f = self._hammer(candle_type=CandleType.DOWN)
+        assert detect_str_1(f, cfg) is not None
+
+    def test_fires_at_boundary(self, cfg: VPAConfig) -> None:
+        """Exactly at threshold boundaries (60% wick, 33% body, 10% upper)."""
+        f = _features(
+            lower_wick=6.0, spread_val=3.3, upper_wick=1.0, range_val=10.0,
+        )
+        assert detect_str_1(f, cfg) is not None
+
+    def test_no_fire_small_lower_wick(self, cfg: VPAConfig) -> None:
+        """Lower wick too small — not a hammer."""
+        f = _features(
+            lower_wick=4.0, spread_val=2.0, upper_wick=1.0, range_val=10.0,
+        )
+        assert detect_str_1(f, cfg) is None
+
+    def test_no_fire_large_body(self, cfg: VPAConfig) -> None:
+        """Body too large relative to range — normal candle, not hammer."""
+        f = _features(
+            lower_wick=6.0, spread_val=4.0, upper_wick=0.0, range_val=10.0,
+        )
+        assert detect_str_1(f, cfg) is None
+
+    def test_no_fire_large_upper_wick(self, cfg: VPAConfig) -> None:
+        """Upper wick too large — more like a doji/spinning top than hammer."""
+        f = _features(
+            lower_wick=6.0, spread_val=1.0, upper_wick=3.0, range_val=10.0,
+        )
+        assert detect_str_1(f, cfg) is None
+
+    def test_no_fire_zero_range(self, cfg: VPAConfig) -> None:
+        """Zero-range bar (open=high=low=close) is not a hammer."""
+        f = _features(
+            lower_wick=0.0, spread_val=0.0, upper_wick=0.0, range_val=0.0,
+        )
+        assert detect_str_1(f, cfg) is None
+
+    def test_evidence_includes_ratios(self, cfg: VPAConfig) -> None:
+        f = self._hammer(vol_state=VolumeState.HIGH)
+        signal = detect_str_1(f, cfg)
+        assert signal is not None
+        assert signal.evidence["lower_wick_ratio"] == 0.7
+        assert signal.evidence["body_ratio"] == 0.2
+        assert signal.evidence["upper_wick_ratio"] == 0.1
+        assert signal.evidence["vol_state"] == "HIGH"
+
+    def test_config_driven_thresholds(self) -> None:
+        """Tighter config rejects a candle that default config accepts."""
+        from config.vpa_config import (
+            CandlePatternsConfig,
+            HammerConfig,
+            ShootingStarConfig,
+        )
+
+        base_cfg = load_vpa_config()
+        tight_hammer = HammerConfig(
+            lower_wick_ratio_min=0.80, body_ratio_max=0.15, upper_wick_ratio_max=0.05,
+        )
+        tight_patterns = CandlePatternsConfig(
+            hammer=tight_hammer,
+            shooting_star=base_cfg.candle_patterns.shooting_star,
+        )
+        tight_cfg = VPAConfig(
+            version=base_cfg.version,
+            vol=base_cfg.vol,
+            spread=base_cfg.spread,
+            trend=base_cfg.trend,
+            setup=base_cfg.setup,
+            gates=base_cfg.gates,
+            execution=base_cfg.execution,
+            costs=base_cfg.costs,
+            slippage=base_cfg.slippage,
+            candle_patterns=tight_patterns,
+            risk=base_cfg.risk,
+        )
+        f = self._hammer()
+        assert detect_str_1(f, base_cfg) is not None
+        assert detect_str_1(f, tight_cfg) is None
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1: low volume + narrow/normal spread = supply test pass
 # ---------------------------------------------------------------------------
 
@@ -295,6 +408,12 @@ class TestEvaluateRules:
         assert len(evaluate_rules(f_val, cfg)) == 1
         assert len(evaluate_rules(f_anom, cfg)) == 1
         assert evaluate_rules(f_val, cfg)[0].id != evaluate_rules(f_anom, cfg)[0].id
+
+    def test_str_1_collected(self, cfg: VPAConfig) -> None:
+        f = _features(lower_wick=7.0, spread_val=2.0, upper_wick=1.0, range_val=10.0)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "STR-1" in ids
 
     def test_anom_2_collected(self, cfg: VPAConfig) -> None:
         f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
