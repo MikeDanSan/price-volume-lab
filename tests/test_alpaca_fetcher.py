@@ -16,18 +16,29 @@ def _mock_alpaca_modules():
     alpaca_data_historical = ModuleType("alpaca.data.historical")
     alpaca_data_requests = ModuleType("alpaca.data.requests")
     alpaca_data_timeframe = ModuleType("alpaca.data.timeframe")
+    alpaca_data_enums = ModuleType("alpaca.data.enums")
 
     mock_client_cls = MagicMock()
     alpaca_data_historical.StockHistoricalDataClient = mock_client_cls
     alpaca_data_requests.StockBarsRequest = MagicMock()
 
     class FakeTimeFrameUnit:
-        Min = "Min"
+        Minute = "Minute"
         Hour = "Hour"
         Day = "Day"
 
     alpaca_data_timeframe.TimeFrameUnit = FakeTimeFrameUnit
     alpaca_data_timeframe.TimeFrame = MagicMock()
+
+    class FakeDataFeed:
+        def __init__(self, value: str) -> None:
+            self.value = value
+        def __call__(self, value: str) -> "FakeDataFeed":
+            return FakeDataFeed(value)
+
+    fake_feed = FakeDataFeed("iex")
+    fake_feed.__class__.__call__ = lambda cls, v: FakeDataFeed(v)
+    alpaca_data_enums.DataFeed = MagicMock(side_effect=lambda v: FakeDataFeed(v))
 
     mods = {
         "alpaca": alpaca,
@@ -35,6 +46,7 @@ def _mock_alpaca_modules():
         "alpaca.data.historical": alpaca_data_historical,
         "alpaca.data.requests": alpaca_data_requests,
         "alpaca.data.timeframe": alpaca_data_timeframe,
+        "alpaca.data.enums": alpaca_data_enums,
     }
     with patch.dict(sys.modules, mods):
         # Clear any cached import of the fetcher module

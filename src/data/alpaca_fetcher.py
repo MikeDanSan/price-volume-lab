@@ -16,10 +16,10 @@ from data.fetcher import FetchResult
 logger = logging.getLogger(__name__)
 
 _TIMEFRAME_MAP = {
-    "1m": ("Min", 1),
-    "5m": ("Min", 5),
-    "15m": ("Min", 15),
-    "30m": ("Min", 30),
+    "1m": ("Minute", 1),
+    "5m": ("Minute", 5),
+    "15m": ("Minute", 15),
+    "30m": ("Minute", 30),
     "1h": ("Hour", 1),
     "1d": ("Day", 1),
 }
@@ -70,10 +70,13 @@ class AlpacaBarFetcher:
         end: datetime | None = None,
         limit: int | None = None,
         cursor: str | None = None,
+        feed: str = "iex",
     ) -> FetchResult:
         """Fetch bars from Alpaca; normalize timestamps to UTC. Returns FetchResult."""
+        from alpaca.data.enums import DataFeed
         from alpaca.data.requests import StockBarsRequest
 
+        feed_enum = DataFeed(feed.lower())
         tf = _parse_timeframe(timeframe)
         request_params = StockBarsRequest(
             symbol_or_symbols=symbol,
@@ -81,6 +84,7 @@ class AlpacaBarFetcher:
             start=start,
             end=end,
             limit=limit,
+            feed=feed_enum,
         )
         response = self._client.get_stock_bars(request_params)
         bars: list[Bar] = []

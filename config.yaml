@@ -1,0 +1,21 @@
+symbol: SPY
+timeframe: "15m"
+
+data:
+  source: alpaca
+  bar_store_path: "data/bars.db"
+
+backtest:
+  initial_cash: 100000
+  slippage_bps: 5
+  risk_pct_per_trade: 1.0
+
+execution:
+  state_path: "data/paper_state.db"
+  initial_cash: 100000
+  max_position_pct: 10.0
+  max_cash_per_trade_pct: 5.0
+
+journal:
+  path: "data/journal.jsonl"
+  echo_stdout: true

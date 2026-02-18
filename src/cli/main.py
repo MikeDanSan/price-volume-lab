@@ -10,8 +10,11 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import click
+from dotenv import load_dotenv
 
 from config import load_config
+
+load_dotenv()
 
 logger = logging.getLogger("vpa")
 
@@ -249,3 +252,7 @@ def status(ctx: click.Context, fills: int) -> None:
             click.echo(f"  {f.side} {f.qty} {f.symbol} @ {f.price:.2f}  {f.timestamp.isoformat()}")
     else:
         click.echo("\nNo fills yet.")
+
+
+if __name__ == "__main__":
+    cli()
