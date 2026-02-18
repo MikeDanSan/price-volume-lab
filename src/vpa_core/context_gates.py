@@ -7,6 +7,7 @@ that must be applied *before* any entry logic.
 Implemented gates:
     CTX-1 — Trend-location-first: anomalies require known trend location.
     CTX-2 — Dominant alignment: block counter-trend signals when policy is DISALLOW.
+    CTX-3 — Congestion awareness: block anomalies inside congestion zones.
 
 Returns both actionable and blocked lists for full observability.
 No signals are discarded silently.
@@ -70,6 +71,30 @@ def _check_ctx_2(signal: SignalEvent, context: ContextSnapshot, config: VPAConfi
     return None
 
 
+def _check_ctx_3(signal: SignalEvent, context: ContextSnapshot, config: VPAConfig) -> str | None:
+    """CTX-3: congestion awareness gate.
+
+    When the market is range-bound, anomaly signals are ambiguous —
+    high volume in congestion doesn't reveal direction. Block gated
+    anomaly-class signals when congestion is active.
+
+    Non-anomaly signals (VALIDATION, TEST, STRENGTH, WEAKNESS,
+    CONFIRMATION) pass through — they may indicate breakout activity
+    or range boundary probes.
+
+    Returns a reason string if blocked, None if passed.
+    """
+    if not config.gates.ctx3_congestion_awareness_required:
+        return None
+    if not signal.requires_context_gate:
+        return None
+    if not context.congestion.active:
+        return None
+    if signal.signal_class == SignalClass.ANOMALY:
+        return "CTX-3: anomaly signal in congestion zone — ambiguous, blocked"
+    return None
+
+
 def apply_gates(
     signals: list[SignalEvent],
     context: ContextSnapshot,
@@ -77,7 +102,7 @@ def apply_gates(
 ) -> GateResult:
     """Apply all context gates to a list of signals.
 
-    Gate ordering: CTX-1 checked first, then CTX-2. A signal blocked by
+    Gate ordering: CTX-1 → CTX-2 → CTX-3. A signal blocked by
     an earlier gate is not checked against later gates.
 
     Parameters
@@ -98,7 +123,7 @@ def apply_gates(
     blocked: list[SignalEvent] = []
     reasons: dict[str, str] = {}
 
-    gate_checks = [_check_ctx_1, _check_ctx_2]
+    gate_checks = [_check_ctx_1, _check_ctx_2, _check_ctx_3]
 
     for signal in signals:
         block_reason: str | None = None

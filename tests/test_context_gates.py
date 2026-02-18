@@ -49,13 +49,14 @@ def _context(
     *,
     trend_location: TrendLocation = TrendLocation.TOP,
     dominant_alignment: DominantAlignment = DominantAlignment.WITH,
+    congestion: Congestion | None = None,
 ) -> ContextSnapshot:
     return ContextSnapshot(
         tf="15m",
         trend=Trend.UP,
         trend_strength=TrendStrength.MODERATE,
         trend_location=trend_location,
-        congestion=Congestion(active=False),
+        congestion=congestion or Congestion(active=False),
         dominant_alignment=dominant_alignment,
     )
 
@@ -289,3 +290,140 @@ class TestCTX1AndCTX2Interaction:
         assert len(result.blocked) == 1
         reason = list(result.block_reasons.values())[0]
         assert "CTX-2" in reason
+
+
+# ---------------------------------------------------------------------------
+# CTX-3: congestion awareness gate
+# ---------------------------------------------------------------------------
+
+
+CONGESTION_ACTIVE = Congestion(active=True, range_high=102.0, range_low=98.0)
+
+
+class TestCTX3:
+    """CTX-3 blocks anomaly signals inside congestion zones."""
+
+    def test_anomaly_blocked_in_congestion(self, cfg: VPAConfig) -> None:
+        assert cfg.gates.ctx3_congestion_awareness_required is True
+        signals = [_signal(rule_id="ANOM-1", signal_class=SignalClass.ANOMALY, requires_gate=True)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.blocked) == 1
+        assert len(result.actionable) == 0
+        assert "CTX-3" in list(result.block_reasons.values())[0]
+
+    def test_anomaly_passes_when_no_congestion(self, cfg: VPAConfig) -> None:
+        signals = [_signal(rule_id="ANOM-1", signal_class=SignalClass.ANOMALY, requires_gate=True)]
+        context = _context(congestion=Congestion(active=False))
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+    def test_validation_passes_in_congestion(self, cfg: VPAConfig) -> None:
+        """VALIDATION (breakout candidate) not blocked by CTX-3."""
+        signals = [_signal(rule_id="VAL-1", signal_class=SignalClass.VALIDATION, requires_gate=False)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+    def test_strength_passes_in_congestion(self, cfg: VPAConfig) -> None:
+        """STRENGTH (hammer at range boundary) not blocked by CTX-3."""
+        signals = [_signal(rule_id="STR-1", signal_class=SignalClass.STRENGTH, requires_gate=True)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+
+    def test_weakness_passes_in_congestion(self, cfg: VPAConfig) -> None:
+        """WEAKNESS (shooting star at range boundary) not blocked by CTX-3."""
+        signals = [_signal(rule_id="WEAK-1", signal_class=SignalClass.WEAKNESS, requires_gate=True)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+
+    def test_test_signal_passes_in_congestion(self, cfg: VPAConfig) -> None:
+        """TEST (boundary probe) not blocked by CTX-3."""
+        signals = [_signal(rule_id="TEST-SUP-1", signal_class=SignalClass.TEST, requires_gate=True)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+
+    def test_non_gated_anomaly_passes_in_congestion(self, cfg: VPAConfig) -> None:
+        """requires_context_gate=False bypasses CTX-3."""
+        signals = [_signal(rule_id="ANOM-X", signal_class=SignalClass.ANOMALY, requires_gate=False)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+
+    def test_mixed_signals_in_congestion(self, cfg: VPAConfig) -> None:
+        """Anomaly blocked, validation and strength pass in congestion."""
+        anom = _signal(rule_id="ANOM-1", signal_class=SignalClass.ANOMALY, requires_gate=True)
+        val = _signal(rule_id="VAL-1", signal_class=SignalClass.VALIDATION, requires_gate=False)
+        strn = _signal(rule_id="STR-1", signal_class=SignalClass.STRENGTH, requires_gate=True)
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates([anom, val, strn], context, cfg)
+
+        assert len(result.actionable) == 2
+        assert {s.id for s in result.actionable} == {"VAL-1", "STR-1"}
+        assert len(result.blocked) == 1
+        assert result.blocked[0].id == "ANOM-1"
+
+
+class TestCTX3Disabled:
+    """When ctx3_congestion_awareness_required=false, CTX-3 is bypassed."""
+
+    def test_anomaly_passes_when_gate_disabled(self, tmp_path) -> None:
+        import json
+        from config.vpa_config import load_vpa_config, DEFAULT_CONFIG_PATH
+
+        with open(DEFAULT_CONFIG_PATH) as f:
+            data = json.load(f)
+        data["gates"]["ctx3_congestion_awareness_required"] = False
+        p = tmp_path / "no_ctx3.json"
+        p.write_text(json.dumps(data))
+        cfg = load_vpa_config(config_path=p)
+
+        signals = [_signal(rule_id="ANOM-1", signal_class=SignalClass.ANOMALY, requires_gate=True)]
+        context = _context(congestion=CONGESTION_ACTIVE)
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+
+class TestAllThreeGatesInteraction:
+    """Verify full gate chain: CTX-1 → CTX-2 → CTX-3."""
+
+    def test_ctx3_blocks_when_ctx1_and_ctx2_pass(self, cfg: VPAConfig) -> None:
+        """Known location, WITH alignment, but in congestion → CTX-3 blocks anomaly."""
+        signals = [_signal(rule_id="ANOM-2", signal_class=SignalClass.ANOMALY, requires_gate=True)]
+        context = _context(
+            trend_location=TrendLocation.TOP,
+            dominant_alignment=DominantAlignment.WITH,
+            congestion=CONGESTION_ACTIVE,
+        )
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.blocked) == 1
+        reason = list(result.block_reasons.values())[0]
+        assert "CTX-3" in reason
+
+    def test_ctx1_blocks_before_ctx3(self, cfg: VPAConfig) -> None:
+        """UNKNOWN location + congestion: CTX-1 blocks first, not CTX-3."""
+        signals = [_signal(rule_id="ANOM-1", signal_class=SignalClass.ANOMALY, requires_gate=True)]
+        context = _context(
+            trend_location=TrendLocation.UNKNOWN,
+            congestion=CONGESTION_ACTIVE,
+        )
+        result = apply_gates(signals, context, cfg)
+
+        assert len(result.blocked) == 1
+        reason = list(result.block_reasons.values())[0]
+        assert "CTX-1" in reason
