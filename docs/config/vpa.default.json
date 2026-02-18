@@ -8,7 +8,12 @@
       "avg_window_M": 20,
       "thresholds": { "narrow_lt": 0.8, "wide_gt": 1.2 }
     },
-    "trend": { "window_K": 5 },
+    "trend": {
+      "window_K": 5,
+      "location_lookback": 20,
+      "congestion_window": 10,
+      "congestion_pct": 0.30
+    },
     "setup": { "window_X": 5 },
     "gates": {
       "ctx1_trend_location_required": true,

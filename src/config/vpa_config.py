@@ -65,6 +65,9 @@ class SpreadConfig:
 @dataclass(frozen=True)
 class TrendConfig:
     window_K: int
+    location_lookback: int = 20
+    congestion_window: int = 10
+    congestion_pct: float = 0.30
 
 
 @dataclass(frozen=True)
@@ -195,7 +198,12 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
                 wide_gt=spread_raw["thresholds"]["wide_gt"],
             ),
         ),
-        trend=TrendConfig(window_K=data["trend"]["window_K"]),
+        trend=TrendConfig(
+            window_K=data["trend"]["window_K"],
+            location_lookback=data["trend"].get("location_lookback", 20),
+            congestion_window=data["trend"].get("congestion_window", 10),
+            congestion_pct=data["trend"].get("congestion_pct", 0.30),
+        ),
         setup=SetupConfig(window_X=data["setup"]["window_X"]),
         gates=GatesConfig(
             ctx1_trend_location_required=data["gates"]["ctx1_trend_location_required"],

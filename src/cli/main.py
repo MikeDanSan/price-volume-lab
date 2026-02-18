@@ -123,15 +123,7 @@ def scan(ctx: click.Context, window: int) -> None:
     from cli.output import format_pipeline_scan
     from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
-    from vpa_core.contracts import (
-        Congestion,
-        ContextSnapshot,
-        DominantAlignment,
-        Trend,
-        TrendLocation,
-        TrendStrength,
-    )
-    from vpa_core.context import CONTEXT_DOWNTREND, CONTEXT_UPTREND, detect_context
+    from vpa_core.context_engine import analyze as analyze_context
     from vpa_core.pipeline import run_pipeline
     from vpa_core.risk_engine import AccountState
     from vpa_core.setup_composer import SetupComposer
@@ -147,22 +139,7 @@ def scan(ctx: click.Context, window: int) -> None:
     composer = SetupComposer(vpa_cfg)
     bar_index = len(bars) - 1
 
-    trend_str = detect_context(bars, lookback=vpa_cfg.trend.window_K)
-    if trend_str == CONTEXT_UPTREND:
-        trend, location = Trend.UP, TrendLocation.BOTTOM
-    elif trend_str == CONTEXT_DOWNTREND:
-        trend, location = Trend.DOWN, TrendLocation.TOP
-    else:
-        trend, location = Trend.RANGE, TrendLocation.MIDDLE
-
-    context = ContextSnapshot(
-        tf=cfg.timeframe,
-        trend=trend,
-        trend_strength=TrendStrength.MODERATE,
-        trend_location=location,
-        congestion=Congestion(active=False),
-        dominant_alignment=DominantAlignment.WITH,
-    )
+    context = analyze_context(bars, vpa_cfg, cfg.timeframe)
 
     account = AccountState(equity=100_000.0)
     result = run_pipeline(
@@ -190,15 +167,7 @@ def paper(ctx: click.Context, window: int) -> None:
     from data.bar_store import BarStore
     from execution import PaperExecutor
     from journal import JournalWriter
-    from vpa_core.contracts import (
-        Congestion,
-        ContextSnapshot,
-        DominantAlignment,
-        Trend,
-        TrendLocation,
-        TrendStrength,
-    )
-    from vpa_core.context import CONTEXT_DOWNTREND, CONTEXT_UPTREND, detect_context
+    from vpa_core.context_engine import analyze as analyze_context
     from vpa_core.pipeline import run_pipeline
     from vpa_core.risk_engine import AccountState
     from vpa_core.setup_composer import SetupComposer
@@ -214,22 +183,7 @@ def paper(ctx: click.Context, window: int) -> None:
     composer = SetupComposer(vpa_cfg)
     bar_index = len(bars) - 1
 
-    trend_str = detect_context(bars, lookback=vpa_cfg.trend.window_K)
-    if trend_str == CONTEXT_UPTREND:
-        trend, location = Trend.UP, TrendLocation.BOTTOM
-    elif trend_str == CONTEXT_DOWNTREND:
-        trend, location = Trend.DOWN, TrendLocation.TOP
-    else:
-        trend, location = Trend.RANGE, TrendLocation.MIDDLE
-
-    context = ContextSnapshot(
-        tf=cfg.timeframe,
-        trend=trend,
-        trend_strength=TrendStrength.MODERATE,
-        trend_location=location,
-        congestion=Congestion(active=False),
-        dominant_alignment=DominantAlignment.WITH,
-    )
+    context = analyze_context(bars, vpa_cfg, cfg.timeframe)
 
     account = AccountState(equity=cfg.execution.initial_cash)
     result = run_pipeline(

@@ -14,16 +14,10 @@ from typing import Callable
 from config.vpa_config import VPAConfig, load_vpa_config
 from vpa_core.contracts import (
     Bar,
-    Congestion,
-    ContextSnapshot,
-    DominantAlignment,
     TradeIntent,
     TradeIntentStatus,
-    Trend,
-    TrendLocation,
-    TrendStrength,
 )
-from vpa_core.context import detect_context, CONTEXT_UPTREND, CONTEXT_DOWNTREND
+from vpa_core.context_engine import analyze as analyze_context
 from vpa_core.pipeline import PipelineResult, run_pipeline
 from vpa_core.risk_engine import AccountState
 from vpa_core.setup_composer import SetupComposer
@@ -80,32 +74,6 @@ def _fill_price(bar: Bar, direction: str, slippage_bps: float) -> float:
     if direction == "LONG":
         return price * (1 + bps)
     return price * (1 - bps)
-
-
-def _build_context(bars: list[Bar], config: VPAConfig, tf: str) -> ContextSnapshot:
-    """Build a ContextSnapshot from bar history using the simple trend detector.
-
-    Full context engine is a future stage; this stub bridges the gap.
-    """
-    trend_str = detect_context(bars, lookback=config.trend.window_K)
-    if trend_str == CONTEXT_UPTREND:
-        trend = Trend.UP
-        location = TrendLocation.BOTTOM
-    elif trend_str == CONTEXT_DOWNTREND:
-        trend = Trend.DOWN
-        location = TrendLocation.TOP
-    else:
-        trend = Trend.RANGE
-        location = TrendLocation.MIDDLE
-
-    return ContextSnapshot(
-        tf=tf,
-        trend=trend,
-        trend_strength=TrendStrength.MODERATE,
-        trend_location=location,
-        congestion=Congestion(active=False),
-        dominant_alignment=DominantAlignment.WITH,
-    )
 
 
 @dataclass
@@ -245,7 +213,7 @@ def run_backtest(
             open_position_count=open_count,
             daily_realized_pnl=daily_pnl,
         )
-        context = _build_context(current_bars, config, timeframe)
+        context = analyze_context(current_bars, config, timeframe)
 
         result = run_pipeline(
             bars=current_bars,
