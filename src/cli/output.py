@@ -96,8 +96,9 @@ def format_backtest_summary(result) -> str:
         for i, t in enumerate(result.trades, 1):
             lines.append(f"  Trade #{i}: {t.direction} | entry {t.entry_price:.2f} @ {t.entry_time.isoformat()}")
             lines.append(f"            exit  {t.exit_price:.2f} @ {t.exit_time.isoformat()} | PnL ${t.pnl:+.2f}")
-            lines.append(f"            Rationale: {t.rationale}")
-            lines.append(f"            Rulebook : {t.rulebook_ref}")
+            rationale_str = " -> ".join(t.rationale) if isinstance(t.rationale, list) else str(t.rationale)
+            lines.append(f"            Rationale: {rationale_str}")
+            lines.append(f"            Setup    : {t.setup}")
     lines.append("===")
     return "\n".join(lines)
 

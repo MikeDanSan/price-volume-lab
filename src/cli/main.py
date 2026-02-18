@@ -90,13 +90,14 @@ def backtest(ctx: click.Context, start_str: str | None, end_str: str | None) -> 
     journal = JournalWriter(cfg.journal.path, echo_stdout=cfg.journal.echo_stdout)
 
     def on_event(event_type: str, payload: dict) -> None:
-        if event_type == "trade":
+        if event_type == "exit":
             t = payload["trade"]
-            journal.trade(t.symbol, t.direction, t.entry_price, t.exit_price, t.qty, t.pnl, t.rationale, t.rulebook_ref)
+            rationale_str = " -> ".join(t.rationale) if isinstance(t.rationale, list) else str(t.rationale)
+            journal.trade(t.symbol, t.direction, t.entry_price, t.exit_price, t.qty, t.pnl, rationale_str, t.setup)
         elif event_type == "signal":
-            p = payload.get("plan")
-            if p:
-                journal.trade_plan(p.signal_id, p.setup_type, p.direction, p.rationale, p.rulebook_ref)
+            intent = payload.get("intent")
+            if intent:
+                journal.signal(intent.setup, intent.direction, " -> ".join(intent.rationale), intent.setup)
 
     click.echo(f"Running backtest: {cfg.symbol} {cfg.timeframe}, {len(bars)} bars ...")
     result = run_backtest(
@@ -105,8 +106,6 @@ def backtest(ctx: click.Context, start_str: str | None, end_str: str | None) -> 
         cfg.timeframe,
         initial_cash=cfg.backtest.initial_cash,
         slippage_bps=cfg.backtest.slippage_bps,
-        commission_per_share=cfg.backtest.commission_per_share,
-        risk_pct_per_trade=cfg.backtest.risk_pct_per_trade,
         journal_callback=on_event,
     )
     click.echo(format_backtest_summary(result))
