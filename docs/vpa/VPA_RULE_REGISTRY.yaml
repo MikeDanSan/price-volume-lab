@@ -258,6 +258,31 @@ setups:
     tests_required:
       - "FXT-ENTRY-LONG-1-seq"
 
+  - id: "ENTRY-SHORT-1"
+    type: "setup"
+    direction: "SHORT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    sequence:
+      within_bars: "${shared_parameters.setup_window_X}"
+      steps:
+        - "CLIMAX-SELL-1"
+        - "WEAK-1 or WEAK-2"
+    invalidation:
+      any:
+        - "opposing_validation_or_strength (VAL-1, STR-1)"
+        - "window_expired"
+    emits:
+      trade_intent_candidate: "ENTRY_OK_SHORT"
+    notes: >
+      Post-distribution short entry. CLIMAX-SELL-1 identifies smart money
+      distributing; WEAK-1/WEAK-2 confirms no demand returning. Stop above
+      the climax bar high.
+    tests_required:
+      - "FXT-ENTRY-SHORT-1-seq"
+
   - id: "ENTRY-LONG-2"
     type: "setup"
     direction: "LONG"

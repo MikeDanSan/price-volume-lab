@@ -8,8 +8,9 @@ When a sequence completes, it emits a SetupMatch for the Risk Engine.
 This stage only matches sequences and tracks state.
 
 Currently implemented:
-    ENTRY-LONG-1: TEST-SUP-1 -> VAL-1 within X bars.
-    ENTRY-LONG-2: STR-1 -> CONF-1 within X bars (hammer + confirmation).
+    ENTRY-LONG-1:  TEST-SUP-1 -> VAL-1 within X bars.
+    ENTRY-LONG-2:  STR-1 -> CONF-1 within X bars (hammer + confirmation).
+    ENTRY-SHORT-1: CLIMAX-SELL-1 -> WEAK-1|WEAK-2 within X bars.
 """
 
 from __future__ import annotations
@@ -103,8 +104,9 @@ class SetupComposer:
     # ------------------------------------------------------------------
 
     _SETUP_DEFS: dict[str, dict] = {
-        "ENTRY-LONG-1": {"trigger": "TEST-SUP-1", "completer": "VAL-1", "direction": "LONG"},
-        "ENTRY-LONG-2": {"trigger": "STR-1", "completer": "CONF-1", "direction": "LONG"},
+        "ENTRY-LONG-1": {"trigger": "TEST-SUP-1", "completers": ["VAL-1"], "direction": "LONG"},
+        "ENTRY-LONG-2": {"trigger": "STR-1", "completers": ["CONF-1"], "direction": "LONG"},
+        "ENTRY-SHORT-1": {"trigger": "CLIMAX-SELL-1", "completers": ["WEAK-1", "WEAK-2"], "direction": "SHORT"},
     }
 
     def _open_new_candidates(self, signals: list[SignalEvent], bar_index: int) -> None:
@@ -135,8 +137,9 @@ class SetupComposer:
             defn = self._SETUP_DEFS.get(candidate.setup_id)
             if defn is None:
                 continue
+            completers = defn["completers"]
             for sig in signals:
-                if sig.id == defn["completer"]:
+                if sig.id in completers:
                     candidate.signals.append(sig)
                     candidate.state = SetupState.READY
                     matches.append(SetupMatch(
@@ -157,17 +160,29 @@ class SetupComposer:
         self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
 
     def _invalidate_candidates(self, signals: list[SignalEvent]) -> None:
-        """Invalidate candidates if opposing anomaly or avoidance signal appears."""
+        """Invalidate candidates if opposing signals appear.
+
+        LONG candidates invalidated by: high-priority anomalies or avoidance.
+        SHORT candidates invalidated by: strong bullish validation or strength.
+        """
         should_invalidate_longs = any(
             (sig.signal_class == SignalClass.ANOMALY and sig.priority >= 2)
             or sig.signal_class == SignalClass.AVOIDANCE
             for sig in signals
         )
-        if should_invalidate_longs:
-            for candidate in self._candidates:
-                if candidate.state == SetupState.CANDIDATE and candidate.direction == "LONG":
-                    candidate.state = SetupState.INVALIDATED
-            self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
+        should_invalidate_shorts = any(
+            sig.signal_class == SignalClass.VALIDATION
+            or sig.signal_class == SignalClass.STRENGTH
+            for sig in signals
+        )
+        for candidate in self._candidates:
+            if candidate.state != SetupState.CANDIDATE:
+                continue
+            if candidate.direction == "LONG" and should_invalidate_longs:
+                candidate.state = SetupState.INVALIDATED
+            elif candidate.direction == "SHORT" and should_invalidate_shorts:
+                candidate.state = SetupState.INVALIDATED
+        self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
 
     @property
     def active_candidates(self) -> int:

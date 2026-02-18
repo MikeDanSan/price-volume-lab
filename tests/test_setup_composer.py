@@ -1,7 +1,8 @@
 """Tests for Setup Composer: sequence matching.
 
-FXT-ENTRY-LONG-1-seq: TEST-SUP-1 -> VAL-1 within X bars.
-FXT-ENTRY-LONG-2-seq: STR-1 -> CONF-1 within X bars.
+FXT-ENTRY-LONG-1-seq:  TEST-SUP-1 -> VAL-1 within X bars.
+FXT-ENTRY-LONG-2-seq:  STR-1 -> CONF-1 within X bars.
+FXT-ENTRY-SHORT-1-seq: CLIMAX-SELL-1 -> WEAK-1|WEAK-2 within X bars.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -327,7 +328,7 @@ class TestEntryLong2NoDuplicate:
         assert el2_candidates == 1
 
 
-class TestBothSetupsIndependent:
+class TestBothLongSetupsIndependent:
     def test_both_setups_can_be_active(self, composer: SetupComposer) -> None:
         """ENTRY-LONG-1 and ENTRY-LONG-2 track independently."""
         ctx = _context()
@@ -341,3 +342,201 @@ class TestBothSetupsIndependent:
         matches = composer.process_signals([_val_1(1), _conf_1(1)], bar_index=1, context=ctx)
         ids = {m.setup_id for m in matches}
         assert ids == {"ENTRY-LONG-1", "ENTRY-LONG-2"}
+
+
+# ---------------------------------------------------------------------------
+# ENTRY-SHORT-1: CLIMAX-SELL-1 -> WEAK-1 | WEAK-2 (post-distribution short)
+# ---------------------------------------------------------------------------
+
+
+def _climax_sell_1(bar_offset: int = 0) -> SignalEvent:
+    return SignalEvent(
+        id="CLIMAX-SELL-1",
+        name="SellingClimax_Distribution",
+        tf="15m",
+        ts=TS + timedelta(minutes=bar_offset * 15),
+        signal_class=SignalClass.WEAKNESS,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={"vol_state": "ULTRA_HIGH", "upper_wick_ratio": 0.65},
+        requires_context_gate=True,
+    )
+
+
+def _weak_1(bar_offset: int = 0) -> SignalEvent:
+    return SignalEvent(
+        id="WEAK-1",
+        name="ShootingStar_SellingPressure",
+        tf="15m",
+        ts=TS + timedelta(minutes=bar_offset * 15),
+        signal_class=SignalClass.WEAKNESS,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={"vol_state": "AVERAGE", "upper_wick_ratio": 0.60},
+        requires_context_gate=True,
+    )
+
+
+def _weak_2(bar_offset: int = 0) -> SignalEvent:
+    return SignalEvent(
+        id="WEAK-2",
+        name="ShootingStar_NoDemand",
+        tf="15m",
+        ts=TS + timedelta(minutes=bar_offset * 15),
+        signal_class=SignalClass.WEAKNESS,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={"vol_state": "LOW", "upper_wick_ratio": 0.62},
+        requires_context_gate=True,
+    )
+
+
+class TestEntryShort1CompleteWithWeak1:
+    """CLIMAX-SELL-1 -> WEAK-1 within window -> ENTRY-SHORT-1 READY."""
+
+    def test_immediate_follow(self, composer: SetupComposer) -> None:
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        assert composer.active_candidates == 1
+
+        matches = composer.process_signals([_weak_1(1)], bar_index=1, context=ctx)
+        assert len(matches) == 1
+        assert matches[0].setup_id == "ENTRY-SHORT-1"
+        assert matches[0].direction == "SHORT"
+        assert len(matches[0].signals) == 2
+        assert matches[0].signals[0].id == "CLIMAX-SELL-1"
+        assert matches[0].signals[1].id == "WEAK-1"
+        assert matches[0].matched_at_bar == 1
+
+    def test_delayed_follow_within_window(self, composer: SetupComposer, cfg: VPAConfig) -> None:
+        ctx = _context()
+        window = cfg.setup.window_X
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+
+        for i in range(1, window):
+            assert composer.process_signals([], bar_index=i, context=ctx) == []
+
+        matches = composer.process_signals([_weak_1(window)], bar_index=window, context=ctx)
+        assert len(matches) == 1
+        assert matches[0].setup_id == "ENTRY-SHORT-1"
+
+
+class TestEntryShort1CompleteWithWeak2:
+    """CLIMAX-SELL-1 -> WEAK-2 within window -> ENTRY-SHORT-1 READY."""
+
+    def test_weak_2_also_completes(self, composer: SetupComposer) -> None:
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        matches = composer.process_signals([_weak_2(1)], bar_index=1, context=ctx)
+        assert len(matches) == 1
+        assert matches[0].setup_id == "ENTRY-SHORT-1"
+        assert matches[0].signals[1].id == "WEAK-2"
+
+    def test_evidence_preserved(self, composer: SetupComposer) -> None:
+        """Climax bar evidence is carried through for stop placement."""
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        matches = composer.process_signals([_weak_2(1)], bar_index=1, context=ctx)
+        assert matches[0].signals[0].evidence["vol_state"] == "ULTRA_HIGH"
+
+
+class TestEntryShort1Expiration:
+    def test_expired_after_window(self, composer: SetupComposer, cfg: VPAConfig) -> None:
+        ctx = _context()
+        window = cfg.setup.window_X
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+
+        for i in range(1, window + 1):
+            composer.process_signals([], bar_index=i, context=ctx)
+
+        matches = composer.process_signals([_weak_1(window + 1)], bar_index=window + 1, context=ctx)
+        assert matches == []
+        assert composer.active_candidates == 0
+
+
+class TestEntryShort1Invalidation:
+    def test_bullish_validation_invalidates_short(self, composer: SetupComposer) -> None:
+        """VAL-1 (bullish drive) kills the SHORT candidate."""
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        assert composer.active_candidates == 1
+
+        composer.process_signals([_val_1(1)], bar_index=1, context=ctx)
+        assert composer.active_candidates == 0
+
+    def test_bullish_strength_invalidates_short(self, composer: SetupComposer) -> None:
+        """STR-1 (hammer strength) kills the SHORT candidate.
+
+        Note: STR-1 also triggers ENTRY-LONG-2, so active_candidates == 1
+        (the new LONG candidate), but no SHORT candidates remain.
+        """
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        composer.process_signals([_str_1(1)], bar_index=1, context=ctx)
+        short_candidates = sum(
+            1 for c in composer._candidates
+            if c.setup_id == "ENTRY-SHORT-1"
+        )
+        assert short_candidates == 0
+
+    def test_avoidance_does_not_invalidate_short(self, composer: SetupComposer) -> None:
+        """AVOID-NEWS-1 only invalidates LONGs, not SHORTs."""
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        composer.process_signals([_avoid_news_1(1)], bar_index=1, context=ctx)
+        assert composer.active_candidates == 1
+
+
+class TestEntryShort1NoDuplicate:
+    def test_second_climax_sell_no_duplicate(self, composer: SetupComposer) -> None:
+        ctx = _context()
+        composer.process_signals([_climax_sell_1()], bar_index=0, context=ctx)
+        composer.process_signals([_climax_sell_1(1)], bar_index=1, context=ctx)
+        short_candidates = sum(
+            1 for c in composer._candidates
+            if c.setup_id == "ENTRY-SHORT-1"
+        )
+        assert short_candidates == 1
+
+
+class TestEntryShort1OnlyTriggerNoComplete:
+    def test_weak_1_alone_does_nothing(self, composer: SetupComposer) -> None:
+        """WEAK-1 without prior CLIMAX-SELL-1 doesn't start a setup."""
+        ctx = _context()
+        matches = composer.process_signals([_weak_1()], bar_index=0, context=ctx)
+        assert matches == []
+        assert composer.active_candidates == 0
+
+
+class TestLongAndShortIndependent:
+    def test_long_and_short_candidates_coexist(self, composer: SetupComposer) -> None:
+        """LONG and SHORT setups track independently."""
+        ctx = _context()
+        composer.process_signals(
+            [_test_sup_1(), _climax_sell_1()], bar_index=0, context=ctx
+        )
+        assert composer.active_candidates == 2
+
+    def test_bullish_validation_invalidates_short_but_completes_long(
+        self, composer: SetupComposer
+    ) -> None:
+        """VAL-1 completes ENTRY-LONG-1 while invalidating ENTRY-SHORT-1."""
+        ctx = _context()
+        composer.process_signals(
+            [_test_sup_1(), _climax_sell_1()], bar_index=0, context=ctx
+        )
+        matches = composer.process_signals([_val_1(1)], bar_index=1, context=ctx)
+        assert len(matches) == 1
+        assert matches[0].setup_id == "ENTRY-LONG-1"
+        assert composer.active_candidates == 0
+
+    def test_anomaly_invalidates_long_but_not_short(self, composer: SetupComposer) -> None:
+        """High-priority anomaly kills LONGs but leaves SHORTs active."""
+        ctx = _context()
+        composer.process_signals(
+            [_test_sup_1(), _climax_sell_1()], bar_index=0, context=ctx
+        )
+        composer.process_signals([_anom_high_priority(1)], bar_index=1, context=ctx)
+        assert composer.active_candidates == 1
+        remaining = composer._candidates[0]
+        assert remaining.setup_id == "ENTRY-SHORT-1"
