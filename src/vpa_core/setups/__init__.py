@@ -1,5 +1,6 @@
-"""VPA setup detection; each setup follows the rulebook."""
+"""VPA setup detection.
 
-from vpa_core.setups.no_demand import check_no_demand
-
-__all__ = ["check_no_demand"]
+Legacy no_demand setup removed (did not map to a canonical rule ID).
+Setup detection is now handled by the SetupComposer in the canonical pipeline.
+See: vpa_core.setup_composer
+"""

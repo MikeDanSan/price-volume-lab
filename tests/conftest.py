@@ -46,11 +46,11 @@ def no_demand_bar_sequence(symbol: str) -> list[Bar]:
 
 @pytest.fixture
 def down_bar_sequence(symbol: str) -> list[Bar]:
-    """Bars that end with a down bar (no no-demand: no-demand requires up bar)."""
+    """Five bars ending with a down bar."""
     return [
         Bar(100.0, 101.0, 99.0, 100.5, 1_000_000, _ts(2024, 1, 2), symbol),
         Bar(100.5, 101.5, 100.0, 101.0, 1_100_000, _ts(2024, 1, 3), symbol),
         Bar(101.0, 102.0, 100.5, 101.5, 1_050_000, _ts(2024, 1, 4), symbol),
         Bar(101.5, 102.5, 101.0, 102.0, 1_200_000, _ts(2024, 1, 5), symbol),
-        Bar(102.0, 102.5, 101.0, 101.2, 1_000_000, _ts(2024, 1, 6), symbol),  # down bar
+        Bar(102.0, 102.5, 101.0, 101.2, 1_000_000, _ts(2024, 1, 6), symbol),
     ]
