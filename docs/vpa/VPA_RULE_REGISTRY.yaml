@@ -170,6 +170,30 @@ rules:
     tests_required:
       - "FXT-TEST-SUP-1-basic"
 
+  - id: "AVOID-NEWS-1"
+    type: "atomic_rule"
+    class: "AVOIDANCE"
+    direction_bias: "NEUTRAL"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: []
+    parameters_ref: "candle_patterns.long_legged_doji"
+    conditions:
+      all:
+        - "range > 0"
+        - "spread / range <= long_legged_doji.body_ratio_max"
+        - "upper_wick / range >= long_legged_doji.min_wick_ratio"
+        - "lower_wick / range >= long_legged_doji.min_wick_ratio"
+        - "volState == LOW"
+    emits:
+      signal_event: "AVOID_TRADE_WAIT"
+    notes: >
+      Long-legged doji on LOW volume = manipulation / stop hunting.
+      Couling: insiders racking price; we stay out and wait for further candles.
+    tests_required:
+      - "FXT-AVOID-NEWS-1-basic"
+
 setups:
   - id: "ENTRY-LONG-1"
     type: "setup"

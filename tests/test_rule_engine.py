@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -300,6 +300,7 @@ class TestSTR1:
         tight_patterns = CandlePatternsConfig(
             hammer=tight_hammer,
             shooting_star=base_cfg.candle_patterns.shooting_star,
+            long_legged_doji=base_cfg.candle_patterns.long_legged_doji,
         )
         tight_cfg = VPAConfig(
             version=base_cfg.version,
@@ -466,6 +467,98 @@ class TestCONF1:
 
 
 # ---------------------------------------------------------------------------
+# AVOID-NEWS-1: long-legged doji on LOW volume (manipulation / stand-aside)
+# ---------------------------------------------------------------------------
+
+
+class TestAVOIDNEWS1:
+    """FXT-AVOID-NEWS-1-basic equivalent."""
+
+    def _doji(self, **kw) -> CandleFeatures:
+        """Classic long-legged doji: upper=4, body=2, lower=4, range=10, LOW vol."""
+        defaults = dict(
+            upper_wick=4.0, spread_val=2.0, lower_wick=4.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        defaults.update(kw)
+        return _features(**defaults)
+
+    def test_fires_on_classic_doji_low_vol(self, cfg: VPAConfig) -> None:
+        f = self._doji()
+        signal = detect_avoid_news_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "AVOID-NEWS-1"
+        assert signal.signal_class == SignalClass.AVOIDANCE
+        assert signal.direction_bias == "NEUTRAL"
+        assert signal.requires_context_gate is False
+
+    def test_fires_on_up_or_down_bar(self, cfg: VPAConfig) -> None:
+        """Doji can be either UP or DOWN — doesn't matter for avoidance."""
+        f_up = self._doji(candle_type=CandleType.UP)
+        f_down = self._doji(candle_type=CandleType.DOWN)
+        assert detect_avoid_news_1(f_up, cfg) is not None
+        assert detect_avoid_news_1(f_down, cfg) is not None
+
+    def test_no_fire_high_volume(self, cfg: VPAConfig) -> None:
+        """High volume doji is NOT manipulation — it's genuine activity."""
+        f = self._doji(vol_state=VolumeState.HIGH)
+        assert detect_avoid_news_1(f, cfg) is None
+
+    def test_no_fire_average_volume(self, cfg: VPAConfig) -> None:
+        f = self._doji(vol_state=VolumeState.AVERAGE)
+        assert detect_avoid_news_1(f, cfg) is None
+
+    def test_no_fire_large_body(self, cfg: VPAConfig) -> None:
+        """Large body = not a doji."""
+        f = _features(
+            upper_wick=3.0, spread_val=4.0, lower_wick=3.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_avoid_news_1(f, cfg) is None
+
+    def test_no_fire_one_sided_wick(self, cfg: VPAConfig) -> None:
+        """Only one big wick = not long-legged (more like hammer or shooting star)."""
+        f = _features(
+            upper_wick=1.0, spread_val=2.0, lower_wick=7.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_avoid_news_1(f, cfg) is None
+
+    def test_no_fire_zero_range(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=0.0, spread_val=0.0, lower_wick=0.0, range_val=0.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_avoid_news_1(f, cfg) is None
+
+    def test_priority_highest(self, cfg: VPAConfig) -> None:
+        """Avoidance has priority=0 (highest) — overrides everything."""
+        f = self._doji()
+        signal = detect_avoid_news_1(f, cfg)
+        assert signal.priority == 0
+
+    def test_evidence_includes_ratios(self, cfg: VPAConfig) -> None:
+        f = self._doji()
+        signal = detect_avoid_news_1(f, cfg)
+        assert signal is not None
+        assert signal.evidence["body_ratio"] == 0.2
+        assert signal.evidence["upper_wick_ratio"] == 0.4
+        assert signal.evidence["lower_wick_ratio"] == 0.4
+        assert signal.evidence["vol_state"] == "LOW"
+
+    def test_can_cofire_with_test_sup_1(self, cfg: VPAConfig) -> None:
+        """LOW vol + NARROW spread doji fires both AVOID-NEWS-1 and TEST-SUP-1."""
+        f = _features(
+            upper_wick=4.0, spread_val=1.0, lower_wick=5.0, range_val=10.0,
+            vol_state=VolumeState.LOW, spread_state=SpreadState.NARROW,
+        )
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "AVOID-NEWS-1" in ids
+        assert "TEST-SUP-1" in ids
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1: low volume + narrow/normal spread = supply test pass
 # ---------------------------------------------------------------------------
 
@@ -576,6 +669,12 @@ class TestEvaluateRules:
         signals = evaluate_rules(f, cfg)
         ids = {s.id for s in signals}
         assert "CONF-1" in ids
+
+    def test_avoid_news_1_collected(self, cfg: VPAConfig) -> None:
+        f = _features(upper_wick=4.0, spread_val=2.0, lower_wick=4.0, range_val=10.0, vol_state=VolumeState.LOW)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "AVOID-NEWS-1" in ids
 
     def test_anom_2_collected(self, cfg: VPAConfig) -> None:
         f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)

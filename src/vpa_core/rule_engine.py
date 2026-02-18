@@ -16,6 +16,7 @@ Canonical rules implemented:
     STR-1      — Hammer (strength: selling absorbed, reversal candidate)
     WEAK-1     — Shooting star (weakness: demand exhaustion)
     CONF-1     — Positive response (confirmation candle)
+    AVOID-NEWS-1 — Long-legged doji on low volume (manipulation/stand-aside)
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 """
 
@@ -318,6 +319,64 @@ def detect_conf_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | 
 
 
 # ---------------------------------------------------------------------------
+# AVOID-NEWS-1 — Long-legged doji on LOW volume (manipulation / stand-aside)
+# Registry: spread/range <= max, both wicks >= min, volState == LOW
+# ---------------------------------------------------------------------------
+
+
+def detect_avoid_news_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect AVOID-NEWS-1: long-legged doji on low volume = manipulation.
+
+    Conditions (from VPA_RULE_REGISTRY.yaml, thresholds from config):
+        - range > 0
+        - spread / range  <= long_legged_doji.body_ratio_max  (close near open)
+        - upper_wick / range >= long_legged_doji.min_wick_ratio  (significant upper wick)
+        - lower_wick / range >= long_legged_doji.min_wick_ratio  (significant lower wick)
+        - volState == LOW
+
+    Couling: low volume with wide two-sided range is anomaly — insiders
+    "racking" price / stop hunting. "We stay out, and wait for further candles."
+
+    No context gate required (avoidance overrides all).
+    """
+    rng = features.range
+    if rng <= 0:
+        return None
+
+    if features.vol_state != VolumeState.LOW:
+        return None
+
+    doji = config.candle_patterns.long_legged_doji
+    body_ratio = features.spread / rng
+    upper_ratio = features.upper_wick / rng
+    lower_ratio = features.lower_wick / rng
+
+    if body_ratio > doji.body_ratio_max:
+        return None
+    if upper_ratio < doji.min_wick_ratio:
+        return None
+    if lower_ratio < doji.min_wick_ratio:
+        return None
+
+    return SignalEvent(
+        id="AVOID-NEWS-1",
+        name="LongLeggedDoji_Manipulation",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.AVOIDANCE,
+        direction_bias="NEUTRAL",
+        priority=0,
+        evidence={
+            "body_ratio": round(body_ratio, 4),
+            "upper_wick_ratio": round(upper_ratio, 4),
+            "lower_wick_ratio": round(lower_ratio, 4),
+            "vol_state": features.vol_state.value,
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 # Registry: volState == LOW, spreadState in {NARROW, NORMAL}
 # ---------------------------------------------------------------------------
@@ -370,6 +429,7 @@ _RULE_DETECTORS = [
     detect_str_1,
     detect_weak_1,
     detect_conf_1,
+    detect_avoid_news_1,
     detect_test_sup_1,
 ]
 

@@ -114,9 +114,16 @@ class ShootingStarConfig:
 
 
 @dataclass(frozen=True)
+class LongLeggedDojiConfig:
+    body_ratio_max: float
+    min_wick_ratio: float
+
+
+@dataclass(frozen=True)
 class CandlePatternsConfig:
     hammer: HammerConfig
     shooting_star: ShootingStarConfig
+    long_legged_doji: LongLeggedDojiConfig
 
 
 @dataclass(frozen=True)
@@ -218,6 +225,10 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
                 upper_wick_ratio_min=cp_raw.get("shooting_star", {}).get("upper_wick_ratio_min", 0.60),
                 body_ratio_max=cp_raw.get("shooting_star", {}).get("body_ratio_max", 0.33),
                 lower_wick_ratio_max=cp_raw.get("shooting_star", {}).get("lower_wick_ratio_max", 0.10),
+            ),
+            long_legged_doji=LongLeggedDojiConfig(
+                body_ratio_max=cp_raw.get("long_legged_doji", {}).get("body_ratio_max", 0.25),
+                min_wick_ratio=cp_raw.get("long_legged_doji", {}).get("min_wick_ratio", 0.25),
             ),
         ),
         risk=RiskConfig(

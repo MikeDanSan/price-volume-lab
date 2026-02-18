@@ -113,6 +113,14 @@
               "body_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 },
               "lower_wick_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 }
             }
+          },
+          "long_legged_doji": {
+            "type": "object",
+            "required": ["body_ratio_max", "min_wick_ratio"],
+            "properties": {
+              "body_ratio_max": { "type": "number", "minimum": 0, "maximum": 1 },
+              "min_wick_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
           }
         }
       },
