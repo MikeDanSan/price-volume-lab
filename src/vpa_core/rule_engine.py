@@ -10,8 +10,9 @@ The orchestrator ``evaluate_rules`` collects all non-None results.
 No TradePlan, no orders, no sizing. That belongs to later stages.
 
 Canonical rules implemented:
-    VAL-1  — Single-bar validation (bullish drive)
-    ANOM-1 — "Big result, little effort" trap-up anomaly
+    VAL-1      — Single-bar validation (bullish drive)
+    ANOM-1     — "Big result, little effort" trap-up anomaly
+    TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
 """
 
 from __future__ import annotations
@@ -114,12 +115,55 @@ def detect_anom_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | 
 
 
 # ---------------------------------------------------------------------------
+# TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
+# Registry: volState == LOW, spreadState in {NARROW, NORMAL}
+# ---------------------------------------------------------------------------
+
+
+def detect_test_sup_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect TEST-SUP-1: quiet, low-volume bar = supply test pass.
+
+    Conditions (from VPA_RULE_REGISTRY.yaml):
+        - volState == LOW
+        - spreadState in {NARROW, NORMAL}
+
+    Couling: a low-volume test bar near support/congestion confirms
+    selling pressure has been removed. "One of the most powerful signals."
+
+    Requires CTX-1 gate (congestion/trend context must be known).
+    Evidence includes bar_low for stop placement in ENTRY-LONG-1.
+    """
+    if features.vol_state != VolumeState.LOW:
+        return None
+    if features.spread_state not in (SpreadState.NARROW, SpreadState.NORMAL):
+        return None
+
+    return SignalEvent(
+        id="TEST-SUP-1",
+        name="TestOfSupply_SellingPressureRemoved",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.TEST,
+        direction_bias="BULLISH",
+        priority=1,
+        evidence={
+            "spread_state": features.spread_state.value,
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+            "spread_rel": features.spread_rel,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
 _RULE_DETECTORS = [
     detect_val_1,
     detect_anom_1,
+    detect_test_sup_1,
 ]
 
 

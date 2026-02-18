@@ -66,6 +66,25 @@ rules:
     tests_required:
       - "FXT-ANOM-1-basic"
 
+  - id: "TEST-SUP-1"
+    type: "atomic_rule"
+    class: "TEST"
+    direction_bias: "BULLISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "volState == LOW"
+        - "spreadState in {NARROW, NORMAL}"
+    emits:
+      signal_event: "SUPPLY_REMOVED_TEST_PASS"
+    notes: "Low-volume bar with narrow/normal spread near congestion. Selling pressure removed."
+    tests_required:
+      - "FXT-TEST-SUP-1-basic"
+
 setups:
   - id: "ENTRY-LONG-1"
     type: "setup"

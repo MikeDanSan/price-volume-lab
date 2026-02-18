@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-17 (Commit 13)
+**Last updated:** 2026-02-17 (Commit 14)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -30,6 +30,7 @@
 |----|------|-------------|---------------|---------------|--------|-------|
 | VAL-1 | Single-bar validation (bullish drive) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_val_1` | `tests/test_rule_engine.py::TestVAL1` (7 tests) | **OK** | Wide up bar + HIGH/ULTRA_HIGH volume. Evidence payload populated. No gate required. |
 | ANOM-1 | Big result, little effort (trap-up) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_anom_1` | `tests/test_rule_engine.py::TestANOM1` (6 tests) | **OK** | Wide up bar + LOW volume. Requires CTX-1 gate. Priority=2. |
+| TEST-SUP-1 | Test of supply (pass) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/rule_engine.py::detect_test_sup_1` | `tests/test_rule_engine.py::TestTESTSUP1` (7 tests) | **OK** | LOW volume + NARROW/NORMAL spread. Requires CTX-1 gate. Bar_low enriched by pipeline for stop placement. |
 
 ### 3.3 Atomic Rules (in VPA_ACTIONABLE_RULES.md, NOT yet in registry)
 | ID | Name | Spec Source | Code Location | Test Location | Status | Notes |
@@ -42,7 +43,7 @@
 | STR-1 | Hammer = strength | VPA_ACTIONABLE_RULES §5 | — | — | **MISSING** | NOT IN REGISTRY. |
 | WEAK-1 | Shooting star = weakness | VPA_ACTIONABLE_RULES §5 | — | — | **MISSING** | NOT IN REGISTRY. |
 | WEAK-2 | Shooting star + LOW vol = no demand | VPA_ACTIONABLE_RULES §5 | — | — | **MISSING** | NOT IN REGISTRY. |
-| TEST-SUP-1 | Test of supply (pass) | VPA_ACTIONABLE_RULES §6 | — | — | **MISSING** | NOT IN REGISTRY. Used as setup trigger in ENTRY-LONG-1 but no standalone detector yet. |
+| TEST-SUP-1 | Test of supply (pass) | VPA_ACTIONABLE_RULES §6 | *(moved to §3.2 — now registered)* | | **OK** | Registered and implemented in Commit 14. |
 | TEST-SUP-2 | Failed test of supply | VPA_ACTIONABLE_RULES §6 | — | — | **MISSING** | NOT IN REGISTRY. |
 | TEST-DEM-1 | Test of demand (pass) | VPA_ACTIONABLE_RULES §6 | — | — | **MISSING** | NOT IN REGISTRY. |
 | CLIMAX-SELL-1 | Selling climax (topping) | VPA_ACTIONABLE_RULES §7 | — | — | **MISSING** | NOT IN REGISTRY. |
@@ -92,4 +93,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 4 OK (VAL-1, ANOM-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 21 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 5 OK (VAL-1, ANOM-1, TEST-SUP-1, CTX-1, ENTRY-LONG-1), 1 PARTIAL (CTX-2), 20 MISSING, 0 DRIFT, 0 EXTRA.**

@@ -89,6 +89,11 @@ def run_pipeline(
 
     signals = evaluate_rules(features, config)
 
+    current_bar = bars[-1]
+    for sig in signals:
+        sig.evidence.setdefault("bar_low", current_bar.low)
+        sig.evidence.setdefault("bar_high", current_bar.high)
+
     gate_result = apply_gates(signals, context, config)
 
     matches = composer.process_signals(gate_result.actionable, bar_index, context)
