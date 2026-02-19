@@ -34,6 +34,8 @@ class ExecutionConfig:
     max_position_pct: float = 10.0
     max_cash_per_trade_pct: float = 5.0
     initial_cash: float = 100_000.0
+    kill_switch: bool = False
+    max_daily_loss_pct: float = 3.0
 
 
 @dataclass(frozen=True)
@@ -100,6 +102,8 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         max_position_pct=float(ex_raw.get("max_position_pct", 10.0)),
         max_cash_per_trade_pct=float(ex_raw.get("max_cash_per_trade_pct", 5.0)),
         initial_cash=float(ex_raw.get("initial_cash", 100_000)),
+        kill_switch=bool(ex_raw.get("kill_switch", False)),
+        max_daily_loss_pct=float(ex_raw.get("max_daily_loss_pct", 3.0)),
     )
 
     j_raw = raw.get("journal", {})

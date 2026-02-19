@@ -25,6 +25,8 @@ execution:
   max_position_pct: 10
   max_cash_per_trade_pct: 5
   initial_cash: 100000
+  kill_switch: false              # set true to halt all order submission
+  max_daily_loss_pct: 3.0         # stop trading when daily realized loss exceeds this %
 
 journal:
   path: data/journal.jsonl

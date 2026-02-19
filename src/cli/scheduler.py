@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 import click
 
+from cli.safety import SafetyGuard
 from cli.structured_log import StructuredEventLogger
 from config.loader import AppConfig
 
@@ -103,6 +104,7 @@ def _run_paper_cycle(
     cfg: AppConfig,
     window: int,
     events: StructuredEventLogger | None = None,
+    guard: SafetyGuard | None = None,
 ) -> None:
     """Single paper-trading evaluation cycle (ingest + pipeline + submit)."""
     from cli.daily_helper import load_daily_context
@@ -161,6 +163,14 @@ def _run_paper_cycle(
             events.cycle_complete(signals=len(result.signals), intents=0)
         return
 
+    if guard:
+        safety = guard.check()
+        if not safety.allowed:
+            click.echo(f"  SAFETY BLOCK: {safety.reason}")
+            if events:
+                events.order_rejected(reason=f"Safety: {safety.reason}")
+            return
+
     executor = PaperExecutor(
         cfg.execution.state_path,
         max_position_pct=cfg.execution.max_position_pct,
@@ -209,6 +219,12 @@ def run_live_loop(cfg: AppConfig, window: int) -> None:
         webhook_url=cfg.alerting.webhook_url,
     )
 
+    guard = SafetyGuard(
+        kill_switch=cfg.execution.kill_switch,
+        max_daily_loss_pct=cfg.execution.max_daily_loss_pct,
+        initial_cash=cfg.execution.initial_cash,
+    )
+
     click.echo(f"Live paper trading started: {cfg.symbol} {cfg.timeframe}")
     click.echo(f"Market hours: {MARKET_OPEN_H}:{MARKET_OPEN_M:02d}–"
                f"{MARKET_CLOSE_H}:{MARKET_CLOSE_M:02d} ET  |  Ctrl+C to stop\n")
@@ -241,7 +257,7 @@ def run_live_loop(cfg: AppConfig, window: int) -> None:
                 time.sleep(wait)
 
             try:
-                _run_paper_cycle(cfg, window, events=events)
+                _run_paper_cycle(cfg, window, events=events, guard=guard)
             except Exception as exc:
                 logger.exception("Cycle error")
                 events.error(message=str(exc), detail=type(exc).__name__)
