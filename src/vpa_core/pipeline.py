@@ -22,7 +22,7 @@ from vpa_core.context_gates import GateResult, apply_gates
 from vpa_core.feature_engine import extract_features
 from vpa_core.relative_volume import average_volume
 from vpa_core.risk_engine import AccountState, evaluate_risk
-from vpa_core.rule_engine import evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
+from vpa_core.rule_engine import detect_conf_2, evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
 from vpa_core.setup_composer import SetupComposer, SetupMatch
 
 if TYPE_CHECKING:
@@ -102,7 +102,11 @@ def run_pipeline(
     bar_signals = evaluate_rules(features, config)
     trend_signals = evaluate_trend_rules(context, config)
     cluster_signals = evaluate_cluster_rules(bars, config, tf)
+
+    conf_2 = detect_conf_2(bar_signals, trend_signals + cluster_signals, config)
     signals = bar_signals + trend_signals + cluster_signals
+    if conf_2 is not None:
+        signals.append(conf_2)
 
     current_bar = bars[-1]
     for sig in signals:

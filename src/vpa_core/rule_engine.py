@@ -767,6 +767,73 @@ def _now() -> datetime:
 
 
 # ---------------------------------------------------------------------------
+# CONF-2 — Two-level agreement (candle-level + trend-level)
+# Canonical: VPA_ACTIONABLE_RULES §9 — both levels must align
+# ---------------------------------------------------------------------------
+
+
+_BULLISH_BIASES = frozenset({"BULLISH"})
+_BEARISH_BIASES = frozenset({"BEARISH", "BEARISH_OR_WAIT"})
+
+
+def detect_conf_2(
+    bar_signals: list[SignalEvent],
+    trend_signals: list[SignalEvent],
+    config: VPAConfig,
+) -> SignalEvent | None:
+    """Detect CONF-2: two-level agreement between candle and trend signals.
+
+    Conditions (from VPA_ACTIONABLE_RULES §9):
+        - At least one candle-level validation/anomaly/strength/weakness present
+        - At least one trend-level validation/anomaly present
+        - Both levels agree in direction (bullish-bullish or bearish-bearish)
+
+    Couling: validation/anomaly exists at two levels — individual candle
+    and group/trend. Confirmation only when both levels align.
+
+    No context gate required (this IS a confirmation signal).
+    """
+    if not bar_signals or not trend_signals:
+        return None
+
+    bar_bullish = any(s.direction_bias in _BULLISH_BIASES for s in bar_signals)
+    bar_bearish = any(s.direction_bias in _BEARISH_BIASES for s in bar_signals)
+    trend_bullish = any(s.direction_bias in _BULLISH_BIASES for s in trend_signals)
+    trend_bearish = any(s.direction_bias in _BEARISH_BIASES for s in trend_signals)
+
+    bullish_confirmed = bar_bullish and trend_bullish
+    bearish_confirmed = bar_bearish and trend_bearish
+
+    if not bullish_confirmed and not bearish_confirmed:
+        return None
+
+    if bearish_confirmed:
+        direction = "BEARISH"
+        bar_ids = [s.id for s in bar_signals if s.direction_bias in _BEARISH_BIASES]
+        trend_ids = [s.id for s in trend_signals if s.direction_bias in _BEARISH_BIASES]
+    else:
+        direction = "BULLISH"
+        bar_ids = [s.id for s in bar_signals if s.direction_bias in _BULLISH_BIASES]
+        trend_ids = [s.id for s in trend_signals if s.direction_bias in _BULLISH_BIASES]
+
+    return SignalEvent(
+        id="CONF-2",
+        name="TwoLevelAgreement_CandleAndTrend",
+        tf=bar_signals[0].tf if bar_signals else "",
+        ts=_now(),
+        signal_class=SignalClass.CONFIRMATION,
+        direction_bias=direction,
+        priority=1,
+        evidence={
+            "bar_signals": bar_ids,
+            "trend_signals": trend_ids,
+            "agreement": direction,
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # TREND-ANOM-2 — Sequential anomaly cluster (escalating warning)
 # Canonical: VPA_ACTIONABLE_RULES §4 — repeated anomalies = alarm bells
 # ---------------------------------------------------------------------------

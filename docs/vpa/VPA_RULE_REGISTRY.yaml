@@ -277,6 +277,29 @@ rules:
     tests_required:
       - "FXT-TREND-ANOM-1-basic"
 
+  - id: "CONF-2"
+    type: "meta_rule"
+    class: "CONFIRMATION"
+    direction_bias: "depends on alignment"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: []
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "at least one candle-level validation/anomaly/strength/weakness signal"
+        - "at least one trend-level validation/anomaly signal"
+        - "both levels agree in direction (bullish-bullish or bearish-bearish)"
+    emits:
+      signal_event: "CONFIRMED"
+    notes: >
+      Couling: validation/anomaly exists at two levels — individual candle
+      and group/trend. Confirmation only when both levels align. Direction
+      bias matches the agreed direction (BULLISH or BEARISH).
+    tests_required:
+      - "FXT-CONF-2-basic"
+
   - id: "TREND-ANOM-2"
     type: "cluster_rule"
     class: "ANOMALY"

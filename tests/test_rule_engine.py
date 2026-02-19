@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_anom_2, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_conf_2, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_anom_2, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -1351,3 +1351,117 @@ class TestTRENDANOM2:
         )
         signals = evaluate_cluster_rules(bars, cfg, "15m")
         assert signals == []
+
+
+# ---------------------------------------------------------------------------
+# CONF-2: two-level agreement (candle + trend)
+# ---------------------------------------------------------------------------
+
+
+def _make_signal(
+    rule_id: str,
+    direction_bias: str,
+    signal_class: SignalClass = SignalClass.VALIDATION,
+) -> SignalEvent:
+    return SignalEvent(
+        id=rule_id, name=f"Test_{rule_id}", tf="15m", ts=TS,
+        signal_class=signal_class, direction_bias=direction_bias,
+    )
+
+
+class TestCONF2:
+    """CONF-2: both candle and trend levels must agree in direction."""
+
+    def test_bullish_agreement(self, cfg: VPAConfig) -> None:
+        """Bullish bar signal + bullish trend signal → CONF-2 BULLISH."""
+        bar_sigs = [_make_signal("VAL-1", "BULLISH")]
+        trend_sigs = [_make_signal("TREND-VAL-1", "BULLISH")]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is not None
+        assert signal.id == "CONF-2"
+        assert signal.signal_class == SignalClass.CONFIRMATION
+        assert signal.direction_bias == "BULLISH"
+        assert signal.requires_context_gate is False
+        assert "VAL-1" in signal.evidence["bar_signals"]
+        assert "TREND-VAL-1" in signal.evidence["trend_signals"]
+
+    def test_bearish_agreement(self, cfg: VPAConfig) -> None:
+        """Bearish bar signal + bearish trend signal → CONF-2 BEARISH."""
+        bar_sigs = [_make_signal("ANOM-2", "BEARISH_OR_WAIT", SignalClass.ANOMALY)]
+        trend_sigs = [_make_signal("TREND-ANOM-1", "BEARISH_OR_WAIT", SignalClass.ANOMALY)]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is not None
+        assert signal.direction_bias == "BEARISH"
+        assert "ANOM-2" in signal.evidence["bar_signals"]
+        assert "TREND-ANOM-1" in signal.evidence["trend_signals"]
+
+    def test_bearish_with_strict_bearish(self, cfg: VPAConfig) -> None:
+        """BEARISH (not just BEARISH_OR_WAIT) also counts."""
+        bar_sigs = [_make_signal("WEAK-1", "BEARISH", SignalClass.WEAKNESS)]
+        trend_sigs = [_make_signal("TREND-ANOM-1", "BEARISH_OR_WAIT", SignalClass.ANOMALY)]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is not None
+        assert signal.direction_bias == "BEARISH"
+
+    def test_no_fire_opposite_directions(self, cfg: VPAConfig) -> None:
+        """Bullish bar + bearish trend → no agreement."""
+        bar_sigs = [_make_signal("VAL-1", "BULLISH")]
+        trend_sigs = [_make_signal("TREND-ANOM-1", "BEARISH_OR_WAIT", SignalClass.ANOMALY)]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is None
+
+    def test_no_fire_empty_bar_signals(self, cfg: VPAConfig) -> None:
+        trend_sigs = [_make_signal("TREND-VAL-1", "BULLISH")]
+        signal = detect_conf_2([], trend_sigs, cfg)
+        assert signal is None
+
+    def test_no_fire_empty_trend_signals(self, cfg: VPAConfig) -> None:
+        bar_sigs = [_make_signal("VAL-1", "BULLISH")]
+        signal = detect_conf_2(bar_sigs, [], cfg)
+        assert signal is None
+
+    def test_no_fire_both_empty(self, cfg: VPAConfig) -> None:
+        signal = detect_conf_2([], [], cfg)
+        assert signal is None
+
+    def test_no_fire_neutral_signals(self, cfg: VPAConfig) -> None:
+        """NEUTRAL direction doesn't match bullish or bearish."""
+        bar_sigs = [_make_signal("AVOID-NEWS-1", "NEUTRAL", SignalClass.AVOIDANCE)]
+        trend_sigs = [_make_signal("TREND-VAL-1", "BULLISH")]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is None
+
+    def test_bearish_takes_precedence(self, cfg: VPAConfig) -> None:
+        """When both bullish and bearish agreement exist, bearish wins."""
+        bar_sigs = [
+            _make_signal("VAL-1", "BULLISH"),
+            _make_signal("ANOM-2", "BEARISH_OR_WAIT", SignalClass.ANOMALY),
+        ]
+        trend_sigs = [
+            _make_signal("TREND-VAL-1", "BULLISH"),
+            _make_signal("TREND-ANOM-1", "BEARISH_OR_WAIT", SignalClass.ANOMALY),
+        ]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is not None
+        assert signal.direction_bias == "BEARISH"
+
+    def test_multiple_bar_signals_one_match(self, cfg: VPAConfig) -> None:
+        """Only the bullish bar signals align with bullish trend."""
+        bar_sigs = [
+            _make_signal("AVOID-NEWS-1", "NEUTRAL", SignalClass.AVOIDANCE),
+            _make_signal("VAL-1", "BULLISH"),
+        ]
+        trend_sigs = [_make_signal("TREND-VAL-1", "BULLISH")]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is not None
+        assert signal.direction_bias == "BULLISH"
+        assert "VAL-1" in signal.evidence["bar_signals"]
+        assert "AVOID-NEWS-1" not in signal.evidence["bar_signals"]
+
+    def test_cluster_signal_as_trend(self, cfg: VPAConfig) -> None:
+        """TREND-ANOM-2 (cluster rule) counts as trend-level for CONF-2."""
+        bar_sigs = [_make_signal("WEAK-1", "BEARISH", SignalClass.WEAKNESS)]
+        trend_sigs = [_make_signal("TREND-ANOM-2", "BEARISH_OR_WAIT", SignalClass.ANOMALY)]
+        signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
+        assert signal is not None
+        assert signal.direction_bias == "BEARISH"
