@@ -41,12 +41,17 @@ def cli(ctx: click.Context, config_path: str) -> None:
 
 
 @cli.command()
-@click.option("--days", default=30, help="Number of calendar days to fetch.")
+@click.option("--days", default=None, type=int, help="Number of calendar days to fetch (default: 30 for intraday, 365 for daily).")
 @click.option("--start", "start_str", default=None, help="Start date (ISO, e.g. 2024-01-01).")
 @click.option("--end", "end_str", default=None, help="End date (ISO, e.g. 2024-02-01).")
+@click.option("--timeframe", "tf_override", default=None, help="Override timeframe (e.g. 1d, 15m). Defaults to config value.")
 @click.pass_context
-def ingest(ctx: click.Context, days: int, start_str: str | None, end_str: str | None) -> None:
-    """Fetch bars from Alpaca and store locally."""
+def ingest(ctx: click.Context, days: int | None, start_str: str | None, end_str: str | None, tf_override: str | None) -> None:
+    """Fetch bars from Alpaca and store locally.
+
+    Use --timeframe 1d to ingest daily bars for multi-timeframe analysis.
+    Daily bars default to 365 days of history; intraday defaults to 30.
+    """
     cfg = load_config(ctx.obj["config_path"])
     from data import get_alpaca_fetcher
     from data.bar_store import BarStore
@@ -54,15 +59,21 @@ def ingest(ctx: click.Context, days: int, start_str: str | None, end_str: str | 
     fetcher = get_alpaca_fetcher(cfg.data.api_key, cfg.data.api_secret)
     store = BarStore(cfg.data.bar_store_path)
 
+    tf = tf_override or cfg.timeframe
+    if days is None:
+        days = 365 if tf == "1d" else 30
+
     end_dt = datetime.fromisoformat(end_str).replace(tzinfo=timezone.utc) if end_str else datetime.now(timezone.utc)
     start_dt = datetime.fromisoformat(start_str).replace(tzinfo=timezone.utc) if start_str else end_dt - timedelta(days=days)
 
-    click.echo(f"Fetching {cfg.symbol} {cfg.timeframe} bars from {start_dt.date()} to {end_dt.date()} ...")
-    result = fetcher.fetch(cfg.symbol, cfg.timeframe, start=start_dt, end=end_dt)
+    click.echo(f"Fetching {cfg.symbol} {tf} bars from {start_dt.date()} to {end_dt.date()} ...")
+    result = fetcher.fetch(cfg.symbol, tf, start=start_dt, end=end_dt)
     if result.bars:
-        store.write_bars(cfg.symbol, cfg.timeframe, result.bars)
+        store.write_bars(cfg.symbol, tf, result.bars)
         click.echo(f"Stored {len(result.bars)} bars in {cfg.data.bar_store_path}")
         click.echo(f"  Range: {result.bars[0].timestamp.isoformat()} -> {result.bars[-1].timestamp.isoformat()}")
+        total = store.count_bars(cfg.symbol, tf)
+        click.echo(f"  Total {tf} bars in store: {total}")
     else:
         click.echo("No bars returned. Check symbol, timeframe, date range, and API keys.")
 

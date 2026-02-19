@@ -89,6 +89,15 @@ class BarStore:
             rows = c.execute(q, params).fetchall()
         return self._rows_to_bars(rows, symbol)
 
+    def count_bars(self, symbol: str, timeframe: str) -> int:
+        """Return the total number of bars stored for a symbol/timeframe pair."""
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT COUNT(*) FROM bars WHERE symbol = ? AND timeframe = ?",
+                (symbol, timeframe),
+            ).fetchone()
+        return row[0] if row else 0
+
     def get_last_bars(
         self,
         symbol: str,
