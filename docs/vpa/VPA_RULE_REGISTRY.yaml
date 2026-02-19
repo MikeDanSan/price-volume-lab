@@ -417,6 +417,56 @@ setups:
     tests_required:
       - "FXT-ENTRY-SHORT-1-seq"
 
+  - id: "AVOID-TRAP-1"
+    type: "avoidance_rule"
+    direction: "NEUTRAL"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    conditions:
+      required:
+        - "ANOM-1 present in bar signals"
+        - "VAL-1 NOT present on same bar"
+    signal_class: "AVOIDANCE"
+    bias: "NEUTRAL"
+    priority: 0
+    gates_required: []
+    implementation:
+      function: "detect_avoid_trap_1"
+      file: "src/vpa_core/rule_engine.py"
+    notes: >
+      Couling: wide spread up on low volume = alarm bells. Without
+      volume support the move is not genuine. Avoids trap-up longs.
+      This signal also invalidates LONG setup candidates via the
+      setup composer invalidation logic.
+    tests_required:
+      - "TestAVOIDTRAP1"
+
+  - id: "AVOID-COUNTER-1"
+    type: "avoidance_rule"
+    direction: "NEUTRAL"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    conditions:
+      required:
+        - "dominant_alignment == AGAINST (from CTX-2)"
+    signal_class: "AVOIDANCE"
+    bias: "NEUTRAL"
+    priority: 0
+    gates_required: []
+    implementation:
+      function: "detect_avoid_counter_1"
+      file: "src/vpa_core/rule_engine.py"
+    notes: >
+      Couling: counter-dominant trend entries carry higher risk.
+      Makes the CTX-2 AGAINST state explicitly visible in the signal
+      chain for journaling, observability, and setup composer
+      invalidation. Risk engine already applies size reduction via
+      CTX-2 REDUCE_RISK policy independently.
+    tests_required:
+      - "TestAVOIDCOUNTER1"
+
   - id: "ENTRY-LONG-2"
     type: "setup"
     direction: "LONG"

@@ -22,6 +22,8 @@ Canonical rules implemented:
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
     TEST-SUP-2 — Failed test of supply (high-vol = supply still present)
     TEST-DEM-1 — Test of demand (low-vol push higher closes near open = no demand)
+    AVOID-TRAP-1 — Trap-up warning (ANOM-1 without same-bar validation)
+    AVOID-COUNTER-1 — Counter-dominant trend warning (alignment AGAINST)
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from vpa_core.contracts import (
     CandleFeatures,
     CandleType,
     ContextSnapshot,
+    DominantAlignment,
     SignalClass,
     SignalEvent,
     SpreadState,
@@ -834,6 +837,91 @@ def detect_conf_2(
 
 
 # ---------------------------------------------------------------------------
+# AVOID-TRAP-1 — Trap-up anomaly without same-bar validation
+# Canonical: VPA_ACTIONABLE_RULES §8 — ANOM-1 without confirmation
+# ---------------------------------------------------------------------------
+
+
+def detect_avoid_trap_1(
+    bar_signals: list[SignalEvent],
+    config: VPAConfig,
+) -> SignalEvent | None:
+    """Detect AVOID-TRAP-1: ANOM-1 present without same-bar validation.
+
+    Conditions (from VPA_ACTIONABLE_RULES §8):
+        - ANOM-1 triggered (wide up bar on low volume = trap-up warning)
+        - No VAL-1 present on the same bar (no volume support)
+
+    Couling: wide spread up on low volume = alarm bells; without volume
+    support it is not genuine. Avoid longs until confirmed.
+
+    No context gate required (avoidance overrides all).
+    """
+    has_anom_1 = any(s.id == "ANOM-1" for s in bar_signals)
+    if not has_anom_1:
+        return None
+
+    has_val_1 = any(s.id == "VAL-1" for s in bar_signals)
+    if has_val_1:
+        return None
+
+    return SignalEvent(
+        id="AVOID-TRAP-1",
+        name="TrapUpAnomaly_AvoidLongsUntilConfirmed",
+        tf=bar_signals[0].tf if bar_signals else "",
+        ts=_now(),
+        signal_class=SignalClass.AVOIDANCE,
+        direction_bias="NEUTRAL",
+        priority=0,
+        evidence={
+            "trigger": "ANOM-1",
+            "missing_confirmation": "VAL-1",
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# AVOID-COUNTER-1 — Counter-dominant trend entries
+# Canonical: VPA_ACTIONABLE_RULES §8 — CTX-2 AGAINST = higher risk
+# ---------------------------------------------------------------------------
+
+
+def detect_avoid_counter_1(
+    context: ContextSnapshot,
+    config: VPAConfig,
+) -> SignalEvent | None:
+    """Detect AVOID-COUNTER-1: dominant alignment is AGAINST.
+
+    Conditions (from VPA_ACTIONABLE_RULES §8):
+        - CTX-2 dominant alignment == AGAINST
+
+    Couling: counter-trend = higher risk; unlikely long hold. This
+    signal makes the CTX-2 risk state explicitly visible in the
+    signal chain for journaling and observability.
+
+    No context gate required (avoidance signal itself).
+    """
+    if context.dominant_alignment != DominantAlignment.AGAINST:
+        return None
+
+    return SignalEvent(
+        id="AVOID-COUNTER-1",
+        name="CounterTrend_ReduceSizeShortHold",
+        tf=context.tf,
+        ts=_now(),
+        signal_class=SignalClass.AVOIDANCE,
+        direction_bias="NEUTRAL",
+        priority=0,
+        evidence={
+            "dominant_alignment": context.dominant_alignment.value,
+            "trend": context.trend.value,
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # TREND-ANOM-2 — Sequential anomaly cluster (escalating warning)
 # Canonical: VPA_ACTIONABLE_RULES §4 — repeated anomalies = alarm bells
 # ---------------------------------------------------------------------------
@@ -953,4 +1041,25 @@ def evaluate_cluster_rules(
     result = detect_trend_anom_2(bars, config, tf)
     if result is not None:
         signals.append(result)
+    return signals
+
+
+def evaluate_avoidance_rules(
+    bar_signals: list[SignalEvent],
+    context: ContextSnapshot,
+    config: VPAConfig,
+) -> list[SignalEvent]:
+    """Run avoidance rules that derive from existing signals and context.
+
+    These rules make implicit risk states (trap-ups, counter-trend)
+    explicitly visible in the signal chain for journaling and the
+    setup composer's invalidation logic.
+    """
+    signals: list[SignalEvent] = []
+    trap = detect_avoid_trap_1(bar_signals, config)
+    if trap is not None:
+        signals.append(trap)
+    counter = detect_avoid_counter_1(context, config)
+    if counter is not None:
+        signals.append(counter)
     return signals

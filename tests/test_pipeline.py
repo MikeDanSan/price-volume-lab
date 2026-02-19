@@ -106,8 +106,9 @@ class TestPartialPipeline:
         assert result.intents == []
 
     def test_anom_1_blocked_by_gate(self, cfg: VPAConfig) -> None:
-        """Wide up bar on low volume fires ANOM-1, but CTX-1 blocks it
-        when trend location is UNKNOWN."""
+        """Wide up bar on low volume fires ANOM-1 (+ derived AVOID-TRAP-1),
+        but CTX-1 blocks ANOM-1 when trend location is UNKNOWN.
+        AVOID-TRAP-1 passes through (no context gate required)."""
         bars = _baseline_bars(20)
         signal_bar = Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
@@ -121,11 +122,12 @@ class TestPartialPipeline:
         result = run_pipeline(bars, bar_index=20, context=ctx,
                               account=_account(), config=cfg, composer=composer)
 
-        assert len(result.signals) == 1
-        assert result.signals[0].id == "ANOM-1"
+        signal_ids = {s.id for s in result.signals}
+        assert signal_ids == {"ANOM-1", "AVOID-TRAP-1"}
 
         assert len(result.gate_result.blocked) == 1
-        assert len(result.gate_result.actionable) == 0
+        actionable_ids = {s.id for s in result.gate_result.actionable}
+        assert "AVOID-TRAP-1" in actionable_ids
 
         assert result.matches == []
         assert result.intents == []

@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_conf_2, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_anom_2, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_counter_1, detect_avoid_news_1, detect_avoid_trap_1, detect_climax_sell_1, detect_conf_1, detect_conf_2, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_anom_2, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_avoidance_rules, evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -1465,3 +1465,182 @@ class TestCONF2:
         signal = detect_conf_2(bar_sigs, trend_sigs, cfg)
         assert signal is not None
         assert signal.direction_bias == "BEARISH"
+
+
+# ---------------------------------------------------------------------------
+# AVOID-TRAP-1 — Trap-up anomaly without same-bar validation
+# ---------------------------------------------------------------------------
+
+
+class TestAVOIDTRAP1:
+    """AVOID-TRAP-1: ANOM-1 present without VAL-1 on same bar."""
+
+    def test_fires_when_anom1_alone(self, cfg: VPAConfig) -> None:
+        """ANOM-1 present, no VAL-1 → fires."""
+        sigs = [_make_signal("ANOM-1", "BULLISH", SignalClass.ANOMALY)]
+        result = detect_avoid_trap_1(sigs, cfg)
+        assert result is not None
+        assert result.id == "AVOID-TRAP-1"
+        assert result.signal_class == SignalClass.AVOIDANCE
+        assert result.direction_bias == "NEUTRAL"
+        assert result.requires_context_gate is False
+        assert result.evidence["trigger"] == "ANOM-1"
+        assert result.evidence["missing_confirmation"] == "VAL-1"
+
+    def test_no_fire_when_val1_present(self, cfg: VPAConfig) -> None:
+        """ANOM-1 + VAL-1 on same bar → no avoidance."""
+        sigs = [
+            _make_signal("ANOM-1", "BULLISH", SignalClass.ANOMALY),
+            _make_signal("VAL-1", "BULLISH"),
+        ]
+        result = detect_avoid_trap_1(sigs, cfg)
+        assert result is None
+
+    def test_no_fire_without_anom1(self, cfg: VPAConfig) -> None:
+        """No ANOM-1 → no avoidance."""
+        sigs = [_make_signal("STR-1", "BULLISH", SignalClass.STRENGTH)]
+        result = detect_avoid_trap_1(sigs, cfg)
+        assert result is None
+
+    def test_no_fire_empty_signals(self, cfg: VPAConfig) -> None:
+        result = detect_avoid_trap_1([], cfg)
+        assert result is None
+
+    def test_fires_with_other_signals_but_no_val1(self, cfg: VPAConfig) -> None:
+        """ANOM-1 + other non-VAL-1 signals still fires."""
+        sigs = [
+            _make_signal("ANOM-1", "BULLISH", SignalClass.ANOMALY),
+            _make_signal("STR-1", "BULLISH", SignalClass.STRENGTH),
+            _make_signal("CONF-1", "BULLISH", SignalClass.CONFIRMATION),
+        ]
+        result = detect_avoid_trap_1(sigs, cfg)
+        assert result is not None
+        assert result.id == "AVOID-TRAP-1"
+
+    def test_tf_from_first_signal(self, cfg: VPAConfig) -> None:
+        """Timeframe should be inherited from bar signals."""
+        sig = SignalEvent(
+            id="ANOM-1", name="Test", tf="1h", ts=TS,
+            signal_class=SignalClass.ANOMALY, direction_bias="BULLISH",
+        )
+        result = detect_avoid_trap_1([sig], cfg)
+        assert result is not None
+        assert result.tf == "1h"
+
+
+# ---------------------------------------------------------------------------
+# AVOID-COUNTER-1 — Counter-dominant trend warning
+# ---------------------------------------------------------------------------
+
+
+class TestAVOIDCOUNTER1:
+    """AVOID-COUNTER-1: dominant alignment AGAINST → avoidance signal."""
+
+    def test_fires_when_against(self, cfg: VPAConfig) -> None:
+        """dominant_alignment == AGAINST → fires."""
+        ctx = _context()
+        ctx = ContextSnapshot(
+            tf="15m", trend=ctx.trend, trend_strength=ctx.trend_strength,
+            trend_location=ctx.trend_location, congestion=ctx.congestion,
+            dominant_alignment=DominantAlignment.AGAINST,
+            volume_trend=ctx.volume_trend,
+        )
+        result = detect_avoid_counter_1(ctx, cfg)
+        assert result is not None
+        assert result.id == "AVOID-COUNTER-1"
+        assert result.signal_class == SignalClass.AVOIDANCE
+        assert result.direction_bias == "NEUTRAL"
+        assert result.requires_context_gate is False
+        assert result.evidence["dominant_alignment"] == "AGAINST"
+
+    def test_no_fire_when_with(self, cfg: VPAConfig) -> None:
+        ctx = ContextSnapshot(
+            tf="15m", trend=Trend.UP, trend_strength=TrendStrength.MODERATE,
+            trend_location=TrendLocation.MIDDLE,
+            congestion=Congestion(active=False),
+            dominant_alignment=DominantAlignment.WITH,
+            volume_trend=VolumeTrend.RISING,
+        )
+        result = detect_avoid_counter_1(ctx, cfg)
+        assert result is None
+
+    def test_no_fire_when_unknown(self, cfg: VPAConfig) -> None:
+        ctx = _context()
+        result = detect_avoid_counter_1(ctx, cfg)
+        assert result is None
+
+    def test_evidence_includes_trend(self, cfg: VPAConfig) -> None:
+        ctx = ContextSnapshot(
+            tf="15m", trend=Trend.DOWN, trend_strength=TrendStrength.MODERATE,
+            trend_location=TrendLocation.MIDDLE,
+            congestion=Congestion(active=False),
+            dominant_alignment=DominantAlignment.AGAINST,
+            volume_trend=VolumeTrend.FALLING,
+        )
+        result = detect_avoid_counter_1(ctx, cfg)
+        assert result is not None
+        assert result.evidence["trend"] == "DOWN"
+
+    def test_tf_from_context(self, cfg: VPAConfig) -> None:
+        ctx = ContextSnapshot(
+            tf="1h", trend=Trend.UP, trend_strength=TrendStrength.MODERATE,
+            trend_location=TrendLocation.MIDDLE,
+            congestion=Congestion(active=False),
+            dominant_alignment=DominantAlignment.AGAINST,
+            volume_trend=VolumeTrend.RISING,
+        )
+        result = detect_avoid_counter_1(ctx, cfg)
+        assert result is not None
+        assert result.tf == "1h"
+
+
+# ---------------------------------------------------------------------------
+# evaluate_avoidance_rules orchestrator
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateAvoidanceRules:
+    """Orchestrator collects both avoidance rules."""
+
+    def test_both_fire(self, cfg: VPAConfig) -> None:
+        """ANOM-1 without VAL-1 + AGAINST context → both avoidance signals."""
+        bar_sigs = [_make_signal("ANOM-1", "BULLISH", SignalClass.ANOMALY)]
+        ctx = ContextSnapshot(
+            tf="15m", trend=Trend.UP, trend_strength=TrendStrength.MODERATE,
+            trend_location=TrendLocation.MIDDLE,
+            congestion=Congestion(active=False),
+            dominant_alignment=DominantAlignment.AGAINST,
+            volume_trend=VolumeTrend.RISING,
+        )
+        results = evaluate_avoidance_rules(bar_sigs, ctx, cfg)
+        ids = {s.id for s in results}
+        assert ids == {"AVOID-TRAP-1", "AVOID-COUNTER-1"}
+
+    def test_neither_fires(self, cfg: VPAConfig) -> None:
+        """No ANOM-1, aligned context → empty."""
+        bar_sigs = [_make_signal("VAL-1", "BULLISH")]
+        ctx = _context()
+        results = evaluate_avoidance_rules(bar_sigs, ctx, cfg)
+        assert results == []
+
+    def test_only_trap(self, cfg: VPAConfig) -> None:
+        """ANOM-1 alone, aligned context → only AVOID-TRAP-1."""
+        bar_sigs = [_make_signal("ANOM-1", "BULLISH", SignalClass.ANOMALY)]
+        ctx = _context()
+        results = evaluate_avoidance_rules(bar_sigs, ctx, cfg)
+        assert len(results) == 1
+        assert results[0].id == "AVOID-TRAP-1"
+
+    def test_only_counter(self, cfg: VPAConfig) -> None:
+        """No ANOM-1 but AGAINST context → only AVOID-COUNTER-1."""
+        bar_sigs = [_make_signal("VAL-1", "BULLISH")]
+        ctx = ContextSnapshot(
+            tf="15m", trend=Trend.UP, trend_strength=TrendStrength.MODERATE,
+            trend_location=TrendLocation.MIDDLE,
+            congestion=Congestion(active=False),
+            dominant_alignment=DominantAlignment.AGAINST,
+            volume_trend=VolumeTrend.RISING,
+        )
+        results = evaluate_avoidance_rules(bar_sigs, ctx, cfg)
+        assert len(results) == 1
+        assert results[0].id == "AVOID-COUNTER-1"

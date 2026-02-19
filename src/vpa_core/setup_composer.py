@@ -159,15 +159,20 @@ class SetupComposer:
                 candidate.state = SetupState.EXPIRED
         self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
 
+    _HARD_AVOIDANCE = {"AVOID-NEWS-1"}
+
     def _invalidate_candidates(self, signals: list[SignalEvent]) -> None:
         """Invalidate candidates if opposing signals appear.
 
-        LONG candidates invalidated by: high-priority anomalies or avoidance.
+        LONG candidates invalidated by: high-priority anomalies or hard-block
+        avoidance signals (e.g. AVOID-NEWS-1). Soft avoidance signals like
+        AVOID-COUNTER-1 are handled by the risk engine (size reduction), not
+        by setup invalidation.
         SHORT candidates invalidated by: strong bullish validation or strength.
         """
         should_invalidate_longs = any(
             (sig.signal_class == SignalClass.ANOMALY and sig.priority >= 2)
-            or sig.signal_class == SignalClass.AVOIDANCE
+            or (sig.signal_class == SignalClass.AVOIDANCE and sig.id in self._HARD_AVOIDANCE)
             for sig in signals
         )
         should_invalidate_shorts = any(
