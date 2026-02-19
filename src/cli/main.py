@@ -157,7 +157,7 @@ def scan(ctx: click.Context, window: int) -> None:
         return
 
     bars = bars[-window:]
-    vpa_cfg = load_vpa_config()
+    vpa_cfg = load_vpa_config(symbol=cfg.symbol)
     composer = SetupComposer(vpa_cfg)
     bar_index = len(bars) - 1
 
@@ -210,7 +210,7 @@ def paper(ctx: click.Context, window: int, live: bool) -> None:
         return
 
     bars = bars[-window:]
-    vpa_cfg = load_vpa_config()
+    vpa_cfg = load_vpa_config(symbol=cfg.symbol)
     composer = SetupComposer(vpa_cfg)
     bar_index = len(bars) - 1
 

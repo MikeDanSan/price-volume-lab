@@ -122,7 +122,7 @@ def run_backtest(
         computes daily context for CTX-2 dominant alignment.
     """
     if config is None:
-        config = load_vpa_config()
+        config = load_vpa_config(symbol=symbol)
 
     if slippage_bps is None:
         slippage_bps = config.slippage.value

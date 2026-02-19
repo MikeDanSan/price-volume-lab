@@ -9,6 +9,7 @@ import pytest
 from config.vpa_config import (
     VPAConfig,
     VPAConfigError,
+    _deep_merge,
     load_vpa_config,
     DEFAULT_CONFIG_PATH,
     DEFAULT_SCHEMA_PATH,
@@ -235,3 +236,153 @@ class TestImmutability:
         cfg = load_vpa_config()
         with pytest.raises(AttributeError):
             cfg.risk.risk_pct_per_trade = 1.0  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Deep merge utility
+# ---------------------------------------------------------------------------
+
+
+class TestDeepMerge:
+    """Unit tests for the _deep_merge helper."""
+
+    def test_flat_override(self) -> None:
+        base = {"a": 1, "b": 2}
+        result = _deep_merge(base, {"b": 99})
+        assert result == {"a": 1, "b": 99}
+
+    def test_nested_override(self) -> None:
+        base = {"x": {"y": 1, "z": 2}}
+        result = _deep_merge(base, {"x": {"z": 42}})
+        assert result == {"x": {"y": 1, "z": 42}}
+
+    def test_deeply_nested(self) -> None:
+        base = {"a": {"b": {"c": 1, "d": 2}}}
+        result = _deep_merge(base, {"a": {"b": {"c": 99}}})
+        assert result == {"a": {"b": {"c": 99, "d": 2}}}
+
+    def test_new_key_added(self) -> None:
+        base = {"a": 1}
+        result = _deep_merge(base, {"b": 2})
+        assert result == {"a": 1, "b": 2}
+
+    def test_original_not_mutated(self) -> None:
+        base = {"a": {"b": 1}}
+        _deep_merge(base, {"a": {"b": 99}})
+        assert base == {"a": {"b": 1}}
+
+    def test_empty_overrides(self) -> None:
+        base = {"a": 1}
+        result = _deep_merge(base, {})
+        assert result == {"a": 1}
+
+    def test_override_replaces_non_dict_with_dict(self) -> None:
+        base = {"a": 1}
+        result = _deep_merge(base, {"a": {"nested": True}})
+        assert result == {"a": {"nested": True}}
+
+
+# ---------------------------------------------------------------------------
+# Per-symbol config overrides
+# ---------------------------------------------------------------------------
+
+
+class TestPerSymbolConfig:
+    """load_vpa_config(symbol=...) merges per-symbol overrides."""
+
+    def _setup_override(self, tmp_path: Path, symbol: str, overrides: dict) -> Path:
+        """Write default config + symbol override into tmp_path, return default path."""
+        base = _default_raw()
+        default_path = tmp_path / "vpa.default.json"
+        default_path.write_text(json.dumps(base))
+        override_path = tmp_path / f"vpa.{symbol.upper()}.json"
+        override_path.write_text(json.dumps(overrides))
+        return default_path
+
+    def test_symbol_override_merges_flat(self, tmp_path: Path) -> None:
+        """Override a top-level nested value (volume_guard.min_avg_volume)."""
+        default_path = self._setup_override(tmp_path, "AAPL", {
+            "volume_guard": {"min_avg_volume": 75000}
+        })
+        cfg = load_vpa_config(config_path=default_path, symbol="AAPL")
+        assert cfg.volume_guard.min_avg_volume == 75000
+        assert cfg.volume_guard.enabled is True  # unchanged from default
+
+    def test_symbol_override_deep_nested(self, tmp_path: Path) -> None:
+        """Override a deeply nested value (vol.thresholds.high_gt)."""
+        default_path = self._setup_override(tmp_path, "QQQ", {
+            "vol": {"thresholds": {"high_gt": 1.5}}
+        })
+        cfg = load_vpa_config(config_path=default_path, symbol="QQQ")
+        assert cfg.vol.thresholds.high_gt == 1.5
+        assert cfg.vol.thresholds.low_lt == 0.8  # unchanged
+        assert cfg.vol.avg_window_N == 20         # unchanged
+
+    def test_symbol_override_atr(self, tmp_path: Path) -> None:
+        """Override ATR settings per-symbol."""
+        default_path = self._setup_override(tmp_path, "TSLA", {
+            "atr": {"enabled": True, "stop_multiplier": 2.0}
+        })
+        cfg = load_vpa_config(config_path=default_path, symbol="TSLA")
+        assert cfg.atr.enabled is True
+        assert cfg.atr.stop_multiplier == 2.0
+        assert cfg.atr.period == 14  # unchanged default
+
+    def test_no_override_file_uses_defaults(self, tmp_path: Path) -> None:
+        """When no per-symbol file exists, returns the base config unchanged."""
+        base = _default_raw()
+        default_path = tmp_path / "vpa.default.json"
+        default_path.write_text(json.dumps(base))
+        cfg = load_vpa_config(config_path=default_path, symbol="NOPE")
+        assert cfg.vol.thresholds.low_lt == 0.8
+        assert cfg.volume_guard.min_avg_volume == 10000
+
+    def test_no_symbol_ignores_overrides(self) -> None:
+        """Calling without symbol= loads the plain default config."""
+        cfg = load_vpa_config()
+        assert isinstance(cfg, VPAConfig)
+        assert cfg.vol.thresholds.low_lt == 0.8
+
+    def test_symbol_case_insensitive(self, tmp_path: Path) -> None:
+        """Symbol is uppercased when looking for the override file."""
+        default_path = self._setup_override(tmp_path, "SPY", {
+            "atr": {"stop_multiplier": 3.0}
+        })
+        cfg = load_vpa_config(config_path=default_path, symbol="spy")
+        assert cfg.atr.stop_multiplier == 3.0
+
+    def test_bad_symbol_override_json_raises(self, tmp_path: Path) -> None:
+        """Invalid JSON in the per-symbol file raises VPAConfigError."""
+        base = _default_raw()
+        default_path = tmp_path / "vpa.default.json"
+        default_path.write_text(json.dumps(base))
+        bad_override = tmp_path / "vpa.BAD.json"
+        bad_override.write_text("{ not json! }")
+        with pytest.raises(VPAConfigError, match="not valid JSON"):
+            load_vpa_config(config_path=default_path, symbol="BAD")
+
+    def test_symbol_override_schema_validated(self, tmp_path: Path) -> None:
+        """Merged config must still pass schema validation."""
+        default_path = self._setup_override(tmp_path, "FAIL", {
+            "risk": {"risk_pct_per_trade": 0.99}  # exceeds max 0.05
+        })
+        with pytest.raises(VPAConfigError, match="validation failed"):
+            load_vpa_config(config_path=default_path, symbol="FAIL")
+
+    def test_multiple_overrides_independent(self, tmp_path: Path) -> None:
+        """Two different symbol overrides produce different configs."""
+        base = _default_raw()
+        default_path = tmp_path / "vpa.default.json"
+        default_path.write_text(json.dumps(base))
+
+        (tmp_path / "vpa.SPY.json").write_text(json.dumps({
+            "atr": {"stop_multiplier": 1.0}
+        }))
+        (tmp_path / "vpa.TSLA.json").write_text(json.dumps({
+            "atr": {"stop_multiplier": 3.0}
+        }))
+
+        cfg_spy = load_vpa_config(config_path=default_path, symbol="SPY")
+        cfg_tsla = load_vpa_config(config_path=default_path, symbol="TSLA")
+        assert cfg_spy.atr.stop_multiplier == 1.0
+        assert cfg_tsla.atr.stop_multiplier == 3.0

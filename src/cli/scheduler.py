@@ -122,7 +122,7 @@ def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
         return
 
     bars = bars[-window:]
-    vpa_cfg = load_vpa_config()
+    vpa_cfg = load_vpa_config(symbol=cfg.symbol)
     composer = SetupComposer(vpa_cfg)
     bar_index = len(bars) - 1
     context = analyze_context(bars, vpa_cfg, cfg.timeframe)

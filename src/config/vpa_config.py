@@ -5,21 +5,30 @@ Canonical reference: docs/vpa/VPA_CONFIG.md
 Default values:      docs/config/vpa.default.json
 Schema:              docs/config/vpa_config.schema.json
 
+Per-symbol overrides: place a partial JSON file named ``vpa.{SYMBOL}.json``
+next to the default config (e.g. ``docs/config/vpa.SPY.json``). Only the
+keys you want to override need to be present; they are deep-merged on top
+of the base config before schema validation.
+
 Usage:
     from config.vpa_config import load_vpa_config
-    cfg = load_vpa_config()                     # loads default
-    cfg = load_vpa_config("my_overrides.json")  # loads custom file
+    cfg = load_vpa_config()                        # loads default
+    cfg = load_vpa_config(symbol="SPY")            # merges vpa.SPY.json if present
+    cfg = load_vpa_config("my_overrides.json")     # loads custom file
     cfg.vol.thresholds.low_lt  # -> 0.8
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import jsonschema
+
+logger = logging.getLogger("vpa.config")
 
 # ---------------------------------------------------------------------------
 # Project root detection (walk up from this file to find pyproject.toml)
@@ -169,6 +178,27 @@ class VPAConfig:
 
 
 # ---------------------------------------------------------------------------
+# Deep merge for per-symbol overrides
+# ---------------------------------------------------------------------------
+
+
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge *overrides* into a copy of *base*.
+
+    - Dict values are merged recursively (override keys win).
+    - Non-dict values in overrides replace the base value.
+    - Keys in base that are absent from overrides are preserved.
+    """
+    merged = dict(base)
+    for key, val in overrides.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(val, dict):
+            merged[key] = _deep_merge(merged[key], val)
+        else:
+            merged[key] = val
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
 
@@ -275,6 +305,7 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
 def load_vpa_config(
     config_path: str | Path | None = None,
     schema_path: str | Path | None = None,
+    symbol: str | None = None,
 ) -> VPAConfig:
     """Load and validate VPA configuration.
 
@@ -284,6 +315,12 @@ def load_vpa_config(
         Path to a VPA JSON config file.  Defaults to ``docs/config/vpa.default.json``.
     schema_path:
         Path to the JSON Schema file.  Defaults to ``docs/config/vpa_config.schema.json``.
+    symbol:
+        Optional ticker symbol.  When provided, the loader looks for a
+        per-symbol override file ``vpa.{SYMBOL}.json`` in the same directory
+        as the base config.  If found, the override is deep-merged on top
+        of the base config before schema validation.  If not found, the
+        base config is used as-is (no error).
 
     Returns
     -------
@@ -306,6 +343,21 @@ def load_vpa_config(
             data = json.load(f)
     except json.JSONDecodeError as exc:
         raise VPAConfigError(f"VPA config is not valid JSON: {exc}") from exc
+
+    if symbol:
+        override_path = cfg_path.parent / f"vpa.{symbol.upper()}.json"
+        if override_path.exists():
+            try:
+                with open(override_path) as f:
+                    overrides = json.load(f)
+            except json.JSONDecodeError as exc:
+                raise VPAConfigError(
+                    f"Per-symbol config {override_path.name} is not valid JSON: {exc}"
+                ) from exc
+            data = _deep_merge(data, overrides)
+            logger.info("Loaded per-symbol config: %s", override_path.name)
+        else:
+            logger.debug("No per-symbol config found at %s — using defaults", override_path)
 
     _validate_schema(data, sch_path)
 

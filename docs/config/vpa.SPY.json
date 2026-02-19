@@ -1,0 +1,9 @@
+{
+    "_comment": "Per-symbol overrides for SPY. Only keys that differ from vpa.default.json need to be listed here. These are deep-merged on top of the defaults.",
+    "volume_guard": {
+        "min_avg_volume": 50000
+    },
+    "atr": {
+        "stop_multiplier": 1.5
+    }
+}
