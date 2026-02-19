@@ -235,6 +235,48 @@ rules:
     tests_required:
       - "FXT-AVOID-NEWS-1-basic"
 
+  - id: "TREND-VAL-1"
+    type: "trend_rule"
+    class: "VALIDATION"
+    direction_bias: "BULLISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: []
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "trend == UP"
+        - "volume_trend == RISING"
+    emits:
+      signal_event: "TREND_VALID_UP"
+    notes: >
+      Couling: validation operates at candle level and trend level; rising
+      prices with rising volume validates the move.
+    tests_required:
+      - "FXT-TREND-VAL-1-basic"
+
+  - id: "TREND-ANOM-1"
+    type: "trend_rule"
+    class: "ANOMALY"
+    direction_bias: "BEARISH_OR_WAIT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "trend == UP"
+        - "volume_trend == FALLING"
+    emits:
+      signal_event: "TREND_ANOM_WEAK_UPTREND"
+    notes: >
+      Couling: rising markets should be associated with rising volume,
+      not falling; alarm bells.
+    tests_required:
+      - "FXT-TREND-ANOM-1-basic"
+
   - id: "TEST-SUP-2"
     type: "atomic_rule"
     class: "TEST"

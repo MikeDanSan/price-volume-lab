@@ -26,15 +26,19 @@ Canonical rules implemented:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from vpa_core.contracts import (
     CandleFeatures,
     CandleType,
+    ContextSnapshot,
     SignalClass,
     SignalEvent,
     SpreadState,
+    Trend,
     VolumeState,
+    VolumeTrend,
 )
 
 if TYPE_CHECKING:
@@ -661,13 +665,125 @@ def evaluate_rules(
     features: CandleFeatures,
     config: VPAConfig,
 ) -> list[SignalEvent]:
-    """Run all registered rule detectors and return any emitted signals.
+    """Run all registered bar-level rule detectors and return any emitted signals.
 
     Returns an empty list if no rules fire (the common case).
     """
     signals: list[SignalEvent] = []
     for detector in _RULE_DETECTORS:
         result = detector(features, config)
+        if result is not None:
+            signals.append(result)
+    return signals
+
+
+# ---------------------------------------------------------------------------
+# Trend-level rules (multi-bar, context-driven)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# TREND-VAL-1 — Uptrend validation (rising prices + rising volume)
+# Canonical: VPA_ACTIONABLE_RULES §4 — volume confirms price trend
+# ---------------------------------------------------------------------------
+
+
+def detect_trend_val_1(context: ContextSnapshot, config: VPAConfig) -> SignalEvent | None:
+    """Detect TREND-VAL-1: price trend UP with volume RISING = validated uptrend.
+
+    Conditions (from VPA_ACTIONABLE_RULES §4):
+        - Price trend == UP
+        - Volume trend == RISING
+
+    Couling: rising prices with rising volume validates the move.
+    No context gate required (this IS a validation signal).
+    """
+    if context.trend != Trend.UP:
+        return None
+    if context.volume_trend != VolumeTrend.RISING:
+        return None
+
+    return SignalEvent(
+        id="TREND-VAL-1",
+        name="UptrendValidation_RisingPriceRisingVolume",
+        tf=context.tf,
+        ts=_now(),
+        signal_class=SignalClass.VALIDATION,
+        direction_bias="BULLISH",
+        priority=2,
+        evidence={
+            "trend": context.trend.value,
+            "volume_trend": context.volume_trend.value,
+            "trend_strength": context.trend_strength.value,
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# TREND-ANOM-1 — Uptrend weakness (rising prices + falling volume)
+# Canonical: VPA_ACTIONABLE_RULES §4 — alarm bells
+# ---------------------------------------------------------------------------
+
+
+def detect_trend_anom_1(context: ContextSnapshot, config: VPAConfig) -> SignalEvent | None:
+    """Detect TREND-ANOM-1: price trend UP but volume FALLING = weakening uptrend.
+
+    Conditions (from VPA_ACTIONABLE_RULES §4):
+        - Price trend == UP
+        - Volume trend == FALLING
+
+    Couling: rising markets should be associated with rising volume,
+    not falling — alarm bells.
+
+    Requires CTX-1 gate (trend location must be known).
+    """
+    if context.trend != Trend.UP:
+        return None
+    if context.volume_trend != VolumeTrend.FALLING:
+        return None
+
+    return SignalEvent(
+        id="TREND-ANOM-1",
+        name="UptrendWeakness_RisingPriceFallingVolume",
+        tf=context.tf,
+        ts=_now(),
+        signal_class=SignalClass.ANOMALY,
+        direction_bias="BEARISH_OR_WAIT",
+        priority=2,
+        evidence={
+            "trend": context.trend.value,
+            "volume_trend": context.volume_trend.value,
+            "trend_strength": context.trend_strength.value,
+        },
+        requires_context_gate=True,
+    )
+
+
+def _now() -> datetime:
+    """Return current UTC timestamp for trend-level signals."""
+    return datetime.now(timezone.utc)
+
+
+_TREND_RULE_DETECTORS = [
+    detect_trend_val_1,
+    detect_trend_anom_1,
+]
+
+
+def evaluate_trend_rules(
+    context: ContextSnapshot,
+    config: VPAConfig,
+) -> list[SignalEvent]:
+    """Run all registered trend-level rule detectors.
+
+    Trend-level rules operate on the ContextSnapshot (multi-bar analysis)
+    rather than single-bar CandleFeatures. They detect patterns like
+    price-volume divergence over the trend window.
+    """
+    signals: list[SignalEvent] = []
+    for detector in _TREND_RULE_DETECTORS:
+        result = detector(context, config)
         if result is not None:
             signals.append(result)
     return signals

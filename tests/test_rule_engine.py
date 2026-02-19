@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules, evaluate_trend_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -1044,3 +1044,145 @@ class TestEvaluateRules:
         assert "ANOM-2" not in val_ids
         assert "ANOM-2" in anom2_ids
         assert "VAL-1" not in anom2_ids
+
+
+# ---------------------------------------------------------------------------
+# Trend-level rules: TREND-VAL-1 and TREND-ANOM-1
+# ---------------------------------------------------------------------------
+
+
+from vpa_core.contracts import (
+    Congestion,
+    ContextSnapshot,
+    DominantAlignment,
+    Trend,
+    TrendLocation,
+    TrendStrength,
+    VolumeTrend,
+)
+
+
+def _context(
+    *,
+    trend: Trend = Trend.UP,
+    volume_trend: VolumeTrend = VolumeTrend.RISING,
+    strength: TrendStrength = TrendStrength.MODERATE,
+    location: TrendLocation = TrendLocation.MIDDLE,
+) -> ContextSnapshot:
+    return ContextSnapshot(
+        tf="15m", trend=trend, trend_strength=strength,
+        trend_location=location, congestion=Congestion(active=False),
+        dominant_alignment=DominantAlignment.UNKNOWN,
+        volume_trend=volume_trend,
+    )
+
+
+class TestTRENDVAL1:
+    """TREND-VAL-1: price UP + volume RISING = validated uptrend."""
+
+    def test_fires_on_up_trend_rising_volume(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.RISING)
+        signal = detect_trend_val_1(ctx, cfg)
+        assert signal is not None
+        assert signal.id == "TREND-VAL-1"
+        assert signal.signal_class == SignalClass.VALIDATION
+        assert signal.direction_bias == "BULLISH"
+        assert signal.requires_context_gate is False
+
+    def test_no_fire_up_trend_falling_volume(self, cfg: VPAConfig) -> None:
+        """UP trend + FALLING volume = TREND-ANOM-1, not validation."""
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.FALLING)
+        assert detect_trend_val_1(ctx, cfg) is None
+
+    def test_no_fire_down_trend_rising_volume(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.DOWN, volume_trend=VolumeTrend.RISING)
+        assert detect_trend_val_1(ctx, cfg) is None
+
+    def test_no_fire_range(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.RANGE, volume_trend=VolumeTrend.RISING)
+        assert detect_trend_val_1(ctx, cfg) is None
+
+    def test_no_fire_unknown_trend(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UNKNOWN, volume_trend=VolumeTrend.RISING)
+        assert detect_trend_val_1(ctx, cfg) is None
+
+    def test_no_fire_flat_volume(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.FLAT)
+        assert detect_trend_val_1(ctx, cfg) is None
+
+    def test_no_fire_unknown_volume(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.UNKNOWN)
+        assert detect_trend_val_1(ctx, cfg) is None
+
+    def test_evidence_populated(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.RISING, strength=TrendStrength.STRONG)
+        signal = detect_trend_val_1(ctx, cfg)
+        assert signal is not None
+        assert signal.evidence["trend"] == "UP"
+        assert signal.evidence["volume_trend"] == "RISING"
+        assert signal.evidence["trend_strength"] == "STRONG"
+
+
+class TestTRENDANOM1:
+    """TREND-ANOM-1: price UP + volume FALLING = weakening uptrend."""
+
+    def test_fires_on_up_trend_falling_volume(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.FALLING)
+        signal = detect_trend_anom_1(ctx, cfg)
+        assert signal is not None
+        assert signal.id == "TREND-ANOM-1"
+        assert signal.signal_class == SignalClass.ANOMALY
+        assert signal.direction_bias == "BEARISH_OR_WAIT"
+        assert signal.requires_context_gate is True
+
+    def test_no_fire_up_trend_rising_volume(self, cfg: VPAConfig) -> None:
+        """UP + RISING = validation, not anomaly."""
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.RISING)
+        assert detect_trend_anom_1(ctx, cfg) is None
+
+    def test_no_fire_down_trend_falling_volume(self, cfg: VPAConfig) -> None:
+        """DOWN + FALLING is not TREND-ANOM-1 (only fires for UP trend)."""
+        ctx = _context(trend=Trend.DOWN, volume_trend=VolumeTrend.FALLING)
+        assert detect_trend_anom_1(ctx, cfg) is None
+
+    def test_no_fire_range(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.RANGE, volume_trend=VolumeTrend.FALLING)
+        assert detect_trend_anom_1(ctx, cfg) is None
+
+    def test_no_fire_flat_volume(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.FLAT)
+        assert detect_trend_anom_1(ctx, cfg) is None
+
+    def test_evidence_populated(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UP, volume_trend=VolumeTrend.FALLING, strength=TrendStrength.MODERATE)
+        signal = detect_trend_anom_1(ctx, cfg)
+        assert signal is not None
+        assert signal.evidence["trend"] == "UP"
+        assert signal.evidence["volume_trend"] == "FALLING"
+        assert signal.evidence["trend_strength"] == "MODERATE"
+
+
+class TestTRENDVAL1andANOM1MutualExclusion:
+    """TREND-VAL-1 and TREND-ANOM-1 cannot co-fire (volume can't be both RISING and FALLING)."""
+
+    def test_mutually_exclusive(self, cfg: VPAConfig) -> None:
+        ctx_val = _context(trend=Trend.UP, volume_trend=VolumeTrend.RISING)
+        ctx_anom = _context(trend=Trend.UP, volume_trend=VolumeTrend.FALLING)
+        val_signals = evaluate_trend_rules(ctx_val, cfg)
+        anom_signals = evaluate_trend_rules(ctx_anom, cfg)
+        val_ids = {s.id for s in val_signals}
+        anom_ids = {s.id for s in anom_signals}
+        assert "TREND-VAL-1" in val_ids
+        assert "TREND-ANOM-1" not in val_ids
+        assert "TREND-ANOM-1" in anom_ids
+        assert "TREND-VAL-1" not in anom_ids
+
+    def test_no_trend_signals_on_range(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.RANGE, volume_trend=VolumeTrend.RISING)
+        signals = evaluate_trend_rules(ctx, cfg)
+        assert signals == []
+
+    def test_no_trend_signals_on_unknown(self, cfg: VPAConfig) -> None:
+        ctx = _context(trend=Trend.UNKNOWN, volume_trend=VolumeTrend.UNKNOWN)
+        signals = evaluate_trend_rules(ctx, cfg)
+        assert signals == []

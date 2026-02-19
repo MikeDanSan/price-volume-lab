@@ -80,6 +80,15 @@ class TrendLocation(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class VolumeTrend(str, Enum):
+    """Volume trend direction over a lookback window."""
+
+    RISING = "RISING"
+    FALLING = "FALLING"
+    FLAT = "FLAT"
+    UNKNOWN = "UNKNOWN"
+
+
 class DominantAlignment(str, Enum):
     """Alignment of trade direction with dominant (slower) timeframe trend."""
 
@@ -204,6 +213,7 @@ class ContextSnapshot:
     trend_location: TrendLocation
     congestion: Congestion
     dominant_alignment: DominantAlignment = DominantAlignment.UNKNOWN
+    volume_trend: VolumeTrend = VolumeTrend.UNKNOWN
 
 
 @dataclass(frozen=True)

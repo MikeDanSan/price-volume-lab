@@ -19,6 +19,7 @@ from vpa_core.contracts import (
     Trend,
     TrendLocation,
     TrendStrength,
+    VolumeTrend,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ def analyze(bars: list[Bar], config: VPAConfig, tf: str) -> ContextSnapshot:
         bars, config.trend.congestion_window,
         config.trend.location_lookback, config.trend.congestion_pct,
     )
+    vol_trend = _detect_volume_trend(bars, config.trend.window_K)
 
     return ContextSnapshot(
         tf=tf,
@@ -56,6 +58,7 @@ def analyze(bars: list[Bar], config: VPAConfig, tf: str) -> ContextSnapshot:
         trend_location=location,
         congestion=congestion,
         dominant_alignment=DominantAlignment.UNKNOWN,
+        volume_trend=vol_trend,
     )
 
 
@@ -67,6 +70,7 @@ def _unknown_context(tf: str) -> ContextSnapshot:
         trend_location=TrendLocation.UNKNOWN,
         congestion=Congestion(active=False),
         dominant_alignment=DominantAlignment.UNKNOWN,
+        volume_trend=VolumeTrend.UNKNOWN,
     )
 
 
@@ -111,6 +115,32 @@ def _detect_trend(bars: list[Bar], window_k: int) -> tuple[Trend, TrendStrength]
         strength = TrendStrength.WEAK
 
     return trend, strength
+
+
+def _detect_volume_trend(bars: list[Bar], window_k: int) -> VolumeTrend:
+    """Determine volume trend direction from recent bar-to-bar volume changes.
+
+    Uses the same window as price trend for consistency. Counts bars where
+    volume increased vs decreased relative to the previous bar.
+    """
+    lookback = min(window_k, len(bars) - 1)
+    if lookback < 1:
+        return VolumeTrend.UNKNOWN
+
+    recent = bars[-(lookback + 1):]
+    ups = 0
+    downs = 0
+    for i in range(1, len(recent)):
+        if recent[i].volume > recent[i - 1].volume:
+            ups += 1
+        elif recent[i].volume < recent[i - 1].volume:
+            downs += 1
+
+    if ups > downs:
+        return VolumeTrend.RISING
+    if downs > ups:
+        return VolumeTrend.FALLING
+    return VolumeTrend.FLAT
 
 
 def _detect_location(bars: list[Bar], location_lookback: int) -> TrendLocation:

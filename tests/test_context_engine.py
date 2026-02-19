@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import pytest
 
 from config.vpa_config import load_vpa_config
-from vpa_core.contracts import Bar, Congestion, DominantAlignment, Trend, TrendLocation, TrendStrength
+from vpa_core.contracts import Bar, Congestion, DominantAlignment, Trend, TrendLocation, TrendStrength, VolumeTrend
 from vpa_core.context_engine import analyze
 
 
@@ -277,3 +277,70 @@ class TestFullSnapshot:
         assert cfg.trend.location_lookback == 20
         assert cfg.trend.congestion_window == 10
         assert cfg.trend.congestion_pct == pytest.approx(0.30)
+
+
+# ---------------------------------------------------------------------------
+# Volume trend detection
+# ---------------------------------------------------------------------------
+
+
+class TestVolumeTrend:
+    """Volume trend computed from bar-to-bar volume changes."""
+
+    def test_rising_volume(self, cfg):
+        """Each bar has higher volume than previous → RISING."""
+        bars = [
+            _bar(1, 100, 101, 99, 100.5, v=1000),
+            _bar(2, 100.5, 102, 100, 101, v=1100),
+            _bar(3, 101, 103, 100.5, 102, v=1200),
+            _bar(4, 102, 104, 101, 103, v=1300),
+            _bar(5, 103, 105, 102, 104, v=1400),
+            _bar(6, 104, 106, 103, 105, v=1500),
+        ]
+        ctx = analyze(bars, cfg, "15m")
+        assert ctx.volume_trend == VolumeTrend.RISING
+
+    def test_falling_volume(self, cfg):
+        """Each bar has lower volume than previous → FALLING."""
+        bars = [
+            _bar(1, 100, 101, 99, 100.5, v=1500),
+            _bar(2, 100.5, 102, 100, 101, v=1400),
+            _bar(3, 101, 103, 100.5, 102, v=1300),
+            _bar(4, 102, 104, 101, 103, v=1200),
+            _bar(5, 103, 105, 102, 104, v=1100),
+            _bar(6, 104, 106, 103, 105, v=1000),
+        ]
+        ctx = analyze(bars, cfg, "15m")
+        assert ctx.volume_trend == VolumeTrend.FALLING
+
+    def test_flat_volume(self, cfg):
+        """All bars have the same volume → FLAT."""
+        bars = [
+            _bar(1, 100, 101, 99, 100.5, v=1000),
+            _bar(2, 100.5, 102, 100, 101, v=1000),
+            _bar(3, 101, 103, 100.5, 102, v=1000),
+            _bar(4, 102, 104, 101, 103, v=1000),
+            _bar(5, 103, 105, 102, 104, v=1000),
+            _bar(6, 104, 106, 103, 105, v=1000),
+        ]
+        ctx = analyze(bars, cfg, "15m")
+        assert ctx.volume_trend == VolumeTrend.FLAT
+
+    def test_unknown_on_single_bar(self, cfg):
+        """Single bar → UNKNOWN volume trend (not enough data)."""
+        bars = [_bar(1, 100, 101, 99, 100)]
+        ctx = analyze(bars, cfg, "15m")
+        assert ctx.volume_trend == VolumeTrend.UNKNOWN
+
+    def test_mixed_mostly_rising(self, cfg):
+        """Majority rising → RISING (3 up, 2 down in window of 5)."""
+        bars = [
+            _bar(1, 100, 101, 99, 100.5, v=1000),
+            _bar(2, 100.5, 102, 100, 101, v=1200),
+            _bar(3, 101, 103, 100.5, 102, v=1100),
+            _bar(4, 102, 104, 101, 103, v=1300),
+            _bar(5, 103, 105, 102, 104, v=1200),
+            _bar(6, 104, 106, 103, 105, v=1400),
+        ]
+        ctx = analyze(bars, cfg, "15m")
+        assert ctx.volume_trend == VolumeTrend.RISING
