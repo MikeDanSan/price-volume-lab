@@ -490,3 +490,32 @@ setups:
     notes: "Couling hammer reversal: STR-1 detected, wait for positive response (CONF-1). Stop below hammer wick."
     tests_required:
       - "FXT-ENTRY-LONG-2-seq"
+
+  - id: "ENTRY-SHORT-2"
+    type: "setup"
+    direction: "SHORT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    sequence:
+      within_bars: "${shared_parameters.setup_window_X}"
+      steps:
+        - "CLIMAX-SELL-1"
+        - "TREND-ANOM-1 or TREND-ANOM-2"
+    invalidation:
+      any:
+        - "opposing_validation_or_strength (VAL-1, STR-1)"
+        - "window_expired"
+    stop_placement: "above climax bar high (first signal bar_high)"
+    emits:
+      trade_intent_candidate: "ENTRY_OK_SHORT"
+    notes: >
+      Reversal short from selling climax confirmed by trend-level weakness.
+      CLIMAX-SELL-1 identifies distribution; TREND-ANOM-1 (up trend + falling
+      volume) or TREND-ANOM-2 (anomaly cluster) confirms the uptrend is
+      deteriorating. Shares trigger with ENTRY-SHORT-1 but uses trend-level
+      (not bar-level) confirmation. Couling: repeated upper-wick + high
+      volume is a clear signal market is ready to move fast.
+    tests_required:
+      - "TestEntryShort2"

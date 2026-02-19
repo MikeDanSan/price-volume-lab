@@ -11,6 +11,7 @@ Currently implemented:
     ENTRY-LONG-1:  TEST-SUP-1 -> VAL-1 within X bars.
     ENTRY-LONG-2:  STR-1 -> CONF-1 within X bars (hammer + confirmation).
     ENTRY-SHORT-1: CLIMAX-SELL-1 -> WEAK-1|WEAK-2 within X bars.
+    ENTRY-SHORT-2: CLIMAX-SELL-1 -> TREND-ANOM-1|TREND-ANOM-2 within X bars.
 """
 
 from __future__ import annotations
@@ -107,6 +108,7 @@ class SetupComposer:
         "ENTRY-LONG-1": {"trigger": "TEST-SUP-1", "completers": ["VAL-1"], "direction": "LONG"},
         "ENTRY-LONG-2": {"trigger": "STR-1", "completers": ["CONF-1"], "direction": "LONG"},
         "ENTRY-SHORT-1": {"trigger": "CLIMAX-SELL-1", "completers": ["WEAK-1", "WEAK-2"], "direction": "SHORT"},
+        "ENTRY-SHORT-2": {"trigger": "CLIMAX-SELL-1", "completers": ["TREND-ANOM-1", "TREND-ANOM-2"], "direction": "SHORT"},
     }
 
     def _open_new_candidates(self, signals: list[SignalEvent], bar_index: int) -> None:
