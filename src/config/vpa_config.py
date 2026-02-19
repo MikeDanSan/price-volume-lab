@@ -34,8 +34,26 @@ logger = logging.getLogger("vpa.config")
 # Project root detection (walk up from this file to find pyproject.toml)
 # ---------------------------------------------------------------------------
 
-_THIS_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _THIS_DIR.parent.parent  # src/config -> src -> project root
+
+def _find_project_root() -> Path:
+    """Walk up from this file looking for pyproject.toml.
+
+    When running from source, finds the repo root.  When installed as a
+    package (e.g. inside Docker), pyproject.toml won't exist — fall back
+    to CWD which is /app in the container.
+    """
+    candidate = Path(__file__).resolve().parent
+    for _ in range(10):
+        if (candidate / "pyproject.toml").exists():
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+    return Path.cwd()
+
+
+_PROJECT_ROOT = _find_project_root()
 
 DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "docs" / "config" / "vpa.default.json"
 DEFAULT_SCHEMA_PATH = _PROJECT_ROOT / "docs" / "config" / "vpa_config.schema.json"
