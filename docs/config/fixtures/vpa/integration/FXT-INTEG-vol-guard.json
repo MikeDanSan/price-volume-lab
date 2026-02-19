@@ -1,0 +1,25 @@
+{
+  "fixtureId": "FXT-INTEG-vol-guard",
+  "type": "integration",
+  "targets": [],
+  "timeframe": "15m",
+  "description": "Low-volume bars with volume guard enabled — pipeline should produce zero signals (holiday thin trading scenario).",
+  "configOverrides": {
+    "vol": { "avg_window_N": 5 },
+    "spread": { "avg_window_M": 5 },
+    "volume_guard": { "enabled": true, "min_avg_volume": 10000 }
+  },
+  "inputs": {
+    "bars": [
+      { "ts": "2026-02-17T14:00:00Z", "open": 100.0, "high": 101.0, "low": 99.5, "close": 100.5, "volume": 50 },
+      { "ts": "2026-02-17T14:15:00Z", "open": 100.5, "high": 101.5, "low": 100.0, "close": 101.0, "volume": 55 },
+      { "ts": "2026-02-17T14:30:00Z", "open": 101.0, "high": 101.8, "low": 100.2, "close": 101.2, "volume": 48 },
+      { "ts": "2026-02-17T14:45:00Z", "open": 101.2, "high": 102.0, "low": 100.5, "close": 101.4, "volume": 52 },
+      { "ts": "2026-02-17T15:00:00Z", "open": 101.4, "high": 102.2, "low": 100.8, "close": 101.6, "volume": 45 },
+      { "ts": "2026-02-17T15:15:00Z", "open": 101.6, "high": 108.0, "low": 101.4, "close": 101.8, "volume": 120 }
+    ]
+  },
+  "expected": {
+    "noSignals": true
+  }
+}

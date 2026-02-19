@@ -170,16 +170,19 @@ def _make_signal_event(raw: dict) -> SignalEvent:
         "TEST-SUP-1": SignalClass.TEST,
         "STR-1": SignalClass.STRENGTH,
         "WEAK-1": SignalClass.WEAKNESS,
+        "WEAK-2": SignalClass.WEAKNESS,
+        "CLIMAX-SELL-1": SignalClass.WEAKNESS,
         "CONF-1": SignalClass.CONFIRMATION,
         "AVOID-NEWS-1": SignalClass.AVOIDANCE,
     }
+    bearish_ids = {"WEAK-1", "WEAK-2", "CLIMAX-SELL-1"}
     return SignalEvent(
         id=sig_id,
         name=sig_id,
         tf=raw.get("tf", "15m"),
         ts=ts,
         signal_class=class_map.get(sig_id, SignalClass.VALIDATION),
-        direction_bias="BULLISH",
+        direction_bias="BEARISH" if sig_id in bearish_ids else "BULLISH",
         priority=2,
         evidence={"bar_low": 98.0, "bar_high": 102.0},
         requires_context_gate=False,

@@ -1,0 +1,29 @@
+{
+  "fixtureId": "FXT-ENTRY-SHORT-1-seq",
+  "type": "setup",
+  "targets": ["ENTRY-SHORT-1"],
+  "timeframe": "15m",
+  "description": "CLIMAX-SELL-1 trigger followed by WEAK-1 completer within window → ENTRY-SHORT-1 match.",
+  "configOverrides": { "setup": { "window_X": 5 } },
+  "inputs": {
+    "events": [
+      { "ts": "2026-02-17T14:00:00Z", "tf": "15m", "signalId": "CLIMAX-SELL-1" },
+      { "ts": "2026-02-17T14:15:00Z", "tf": "15m", "signalId": "WEAK-1" }
+    ],
+    "context": {
+      "trendLocation": "TOP",
+      "congestion": { "active": false }
+    }
+  },
+  "expected": {
+    "setupTransitions": [
+      { "state": "CANDIDATE", "at": "2026-02-17T14:00:00Z" },
+      { "state": "READY", "at": "2026-02-17T14:15:00Z" }
+    ],
+    "tradeIntentCandidate": {
+      "setupId": "ENTRY-SHORT-1",
+      "direction": "SHORT",
+      "status": "READY"
+    }
+  }
+}
