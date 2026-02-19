@@ -1,0 +1,26 @@
+# vpa-engine config: SPY
+# Used by docker-compose service "vpa-spy".
+# API keys come from environment variables (not this file).
+
+symbol: SPY
+timeframe: "15m"
+
+data:
+  source: alpaca
+  bar_store_path: data/SPY/bars.db
+
+backtest:
+  initial_cash: 100000
+  slippage_bps: 5
+  commission_per_share: 0
+  risk_pct_per_trade: 1.0
+
+execution:
+  state_path: data/SPY/paper_state.db
+  max_position_pct: 10
+  max_cash_per_trade_pct: 5
+  initial_cash: 100000
+
+journal:
+  path: data/SPY/journal.jsonl
+  echo_stdout: true

@@ -165,7 +165,7 @@
 || Commit | Description | Status |
 ||--------|-------------|--------|
 || 51 | Dockerfile + .dockerignore (slim Python 3.12, `vpa` CLI entrypoint) | ✅ Done |
-|| 52 | docker-compose for per-symbol containers (SPY + QQQ template) | |
+|| 52 | docker-compose for per-symbol containers (SPY + QQQ template) | ✅ Done |
 || 53 | Health check CLI command + Docker HEALTHCHECK | |
 || 54 | Structured JSON logging + alerting hooks | |
 || 55 | Kill switch + max daily loss safety limits | |
