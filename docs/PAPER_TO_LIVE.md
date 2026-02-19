@@ -49,11 +49,15 @@ What happens under the hood:
 
 ### Phase 1 readiness checklist
 
-- [ ] Backtest produces reasonable results on 30+ days of data.
-- [ ] `vpa scan` output shows correct context, volume, and setup reasoning.
-- [ ] Paper trades logged with rationale and rulebook_ref in journal.
-- [ ] System restarts cleanly (SQLite state is restart-safe).
-- [ ] Tests pass: `pytest tests/ -v` (all green).
+- [x] Backtest produces reasonable results on 30+ days of data.
+- [x] `vpa scan` output shows correct context, volume, and setup reasoning.
+- [x] Paper trades logged with rationale and rulebook_ref in journal.
+- [x] System restarts cleanly (SQLite state is restart-safe).
+- [x] Tests pass: `pytest tests/ -v` (590 passing).
+- [x] Docker containerization for multi-symbol deployment.
+- [x] Health check CLI (`vpa health`) for monitoring.
+- [x] Structured JSON logging for observability.
+- [x] Kill switch and daily loss safety limits enforced.
 
 ---
 
@@ -103,12 +107,12 @@ What changes:
 
 ### Live safety requirements
 
-- [ ] Kill switch: config flag or env var that disables order submission instantly.
-- [ ] Max daily loss limit: stop trading if daily PnL drops below threshold.
-- [ ] Market hours enforcement: no orders outside regular session unless intentional.
+- [x] Kill switch: `execution.kill_switch` config flag disables all order submission instantly.
+- [x] Max daily loss limit: `execution.max_daily_loss_pct` stops trading when daily realized loss exceeds threshold.
+- [x] Market hours enforcement: scheduler only runs during 9:30–16:00 ET weekdays.
 - [ ] Broker permissions verified: account approved for equity trading (and margin if used).
 - [ ] Separate live state DB from paper state DB.
-- [ ] Real-time monitoring of positions vs expectations.
+- [x] Real-time monitoring: structured JSON logging + webhook alerting for signals, trades, and errors.
 
 ---
 

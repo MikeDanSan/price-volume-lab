@@ -1,30 +1,31 @@
 # COMPLIANCE_REPORT.md
 **VPA Canonical System — Compliance Report**
-- Date: 2026-02-17 (updated after Phase I)
+- Date: 2026-02-17 (updated after Phase J)
 - Code version: 0.1.0 (pyproject.toml)
 - Config version: 0.1 (vpa.default.json)
-- Commits since initial audit: 50
+- Commits since initial audit: 56
 
 ---
 
 ## 1) Executive summary
-- **Overall status: PASS (full canonical pipeline + multi-timeframe + extended rules)**
+- **Overall status: PASS (full canonical pipeline + multi-timeframe + extended rules + production-ready)**
 - Blocking issues: 0 (all 7 original blockers resolved)
 - Drift issues: 0
 - Implemented rules: 18 atomic/trend/cluster/meta/avoidance rules, 4 setups, 3 context gates (all OK)
-- Tests: 555 passing, 0 failures
+- Tests: 590 passing, 0 failures
 
-The system has a fully functional canonical pipeline (Features → Rules → Gates → Composer → Risk → Execution) with real context analysis (trend, location, congestion, volume trend), multi-timeframe dominant alignment (daily trend), ATR-based stop optimization, per-symbol configuration, config-driven thresholds, deterministic backtest execution, bidirectional trading (long + short), avoidance rules, a low-liquidity volume guard, and a live paper-trading scheduler. All CLI commands (`scan`, `paper`, `backtest`, `status`, `ingest`) use the canonical pipeline.
+The system has a fully functional canonical pipeline (Features → Rules → Gates → Composer → Risk → Execution) with real context analysis (trend, location, congestion, volume trend), multi-timeframe dominant alignment (daily trend), ATR-based stop optimization, per-symbol configuration, config-driven thresholds, deterministic backtest execution, bidirectional trading (long + short), avoidance rules, a low-liquidity volume guard, a live paper-trading scheduler, Docker containerization, structured JSON logging, webhook alerting, and safety limits (kill switch + max daily loss). All CLI commands (`scan`, `paper`, `backtest`, `status`, `ingest`, `health`) use the canonical pipeline.
 
 ### Completed since last report
 - **Phase H (commits 37–43):** Daily bar ingestion + storage, daily trend analyzer, CTX-2 dominant alignment from daily trend, ATR computation + config, ATR-based stop placement, per-symbol config support (`vpa.{SYMBOL}.json` overrides).
 - **Phase I (commits 44–49):** TEST-SUP-2 + TEST-DEM-1 (supply/demand tests), TREND-VAL-1 + TREND-ANOM-1 (trend-level rules), TREND-ANOM-2 (cluster rule), CONF-2 (two-level agreement meta-rule), AVOID-TRAP-1 + AVOID-COUNTER-1 (avoidance rules), ENTRY-SHORT-2 (reversal short from climax + trend weakness).
-- Test count: 375 → 555 (+180 tests across Phases H-I)
+- **Phase J (commits 51–56):** Dockerfile + .dockerignore, docker-compose for per-symbol containers (SPY + QQQ), health check CLI (`vpa health`) + Docker HEALTHCHECK, structured JSON logging + alerting hooks, kill switch + max daily loss safety limits.
+- Test count: 375 → 555 (Phases H-I) → 590 (Phase J, +35)
 
 ### Remaining work (non-blocking)
 - 3 rule IDs defined in docs but not yet implemented (VAL-2, STR-2, CLIMAX-SELL-2)
 - IEX volume thresholds may need recalibration vs SIP
-- Production readiness (Docker, health checks, alerting)
+- Alpaca paper API executor (Phase 2 in PAPER_TO_LIVE.md)
 
 ---
 
@@ -160,7 +161,7 @@ Rule Engine → Context Gates → Setup Composer → Risk → Execution → Jour
 
 ## 8) Tests + fixtures
 
-### Test suite: 555 tests, 0 failures
+### Test suite: 590 tests, 0 failures
 
 | Test File | Count | Coverage |
 |-----------|-------|----------|
@@ -173,17 +174,19 @@ Rule Engine → Context Gates → Setup Composer → Risk → Execution → Jour
 | `test_context_engine.py` | 23 | Trend, location, congestion, volume trend detection |
 | `test_scheduler.py` | 23 | Market hours, bar alignment, weekend handling |
 | `test_daily_context.py` | 21 | Daily trend analyzer, alignment computation |
+| `test_safety.py` | 20 | Kill switch, daily loss limit, day reset, config integration |
 | `test_classification.py` | 19 | Volume + spread classifiers |
 | `test_atr.py` | 17 | ATR calculation + config integration |
 | `test_pipeline.py` | 17 | Integration: bars → TradeIntent + volume guard + multi-TF |
 | `test_canonical_models.py` | 15 | Data model construction + immutability |
 | `test_vpa_core_features.py` | 14 | Candle anatomy functions |
+| `test_structured_log.py` | 11 | Structured JSON event logger + webhook |
+| `test_cli.py` | 10 | CLI commands (scan, backtest, status, paper, health) |
 | `test_golden_fixtures.py` | 9 | End-to-end pipeline replay from JSON (9 fixtures) |
 | `test_feature_engine.py` | 8 | Feature extraction pipeline |
 | `test_vocab_lint.py` | 8 | Vocabulary enforcement |
 | `test_data_pipeline.py` | 7 | Data pipeline (store + fetch) |
 | `test_daily_helper.py` | 6 | Daily bar helpers |
-| `test_cli.py` | 6 | CLI commands (scan, backtest, status, paper) |
 | `test_config.py` | 4 | Base config loader |
 | Others | 9 | Context helpers, fetcher, execution, journal |
 
@@ -230,6 +233,12 @@ Rule Engine → Context Gates → Setup Composer → Risk → Execution → Jour
 | Per-symbol configuration | OK |
 | Position/status tracking (`vpa status`) | OK |
 | Journal logging | OK |
+| Docker containerization (Dockerfile + compose) | OK |
+| Health check (`vpa health` + HEALTHCHECK) | OK |
+| Structured JSON logging (stderr) | OK |
+| Webhook alerting (Slack/Discord) | OK |
+| Kill switch (config-driven) | OK |
+| Max daily loss safety limit | OK |
 
 ---
 
@@ -246,3 +255,4 @@ Rule Engine → Context Gates → Setup Composer → Risk → Execution → Jour
 | G — Short-side + tuning | 30–36 | WEAK-2, CLIMAX-SELL-1, ENTRY-SHORT-1, volume guard | +63 |
 | H — Multi-TF + stops | 37–43 | Daily trend, ATR stops, per-symbol config | +68 |
 | I — Extended rules | 44–49 | 8 new rules, ENTRY-SHORT-2 | +112 |
+| J — Production readiness | 51–56 | Docker, health checks, logging, alerting, safety limits | +35 |

@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-17 (Phase I complete)
+**Last updated:** 2026-02-17 (Phase J complete)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -93,6 +93,10 @@
 - [x] Multi-timeframe: daily trend wired into CTX-2 dominant alignment — `src/vpa_core/daily_context.py`
 - [x] ATR-based stop placement available (config-driven) — `src/vpa_core/atr.py` + `risk_engine.py`
 - [x] Per-symbol config overrides — `src/config/vpa_config.py::load_vpa_config(symbol=...)`
+- [x] Docker containerization — `Dockerfile` + `docker-compose.yml` + `.dockerignore`
+- [x] Health check CLI — `src/cli/main.py::health` + Docker HEALTHCHECK
+- [x] Structured JSON logging — `src/cli/structured_log.py::StructuredEventLogger`
+- [x] Kill switch + daily loss safety — `src/cli/safety.py::SafetyGuard`
 
 ## 5) Data model alignment
 | Canonical Model | Spec Location | Code Location | Status |
