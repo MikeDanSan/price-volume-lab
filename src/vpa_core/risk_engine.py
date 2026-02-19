@@ -5,7 +5,7 @@ Computes stop placement, position sizing, and applies hard rejects.
 This is the final gate before execution.
 
 Responsibilities:
-    - Stop placement per setup-scoped rules
+    - Stop placement per setup-scoped rules (bar-based or ATR-based)
     - Position sizing from risk budget (risk_pct_per_trade)
     - Countertrend risk multiplier (CTX-2)
     - Hard rejects: max concurrent positions, daily loss limit
@@ -36,16 +36,11 @@ class AccountState:
     daily_realized_pnl: float = 0.0
 
 
-def _compute_stop(match: SetupMatch, current_price: float) -> float:
-    """Compute stop level based on setup type and direction.
+def _compute_stop_bar_based(match: SetupMatch, current_price: float) -> float:
+    """Compute stop from the trigger bar's high/low.
 
-    LONG setups: stop below the trigger bar's low.
-        ENTRY-LONG-1: test bar low.  ENTRY-LONG-2: hammer bar low.
-        Fallback: 2% below current price.
-
-    SHORT setups: stop above the trigger bar's high.
-        ENTRY-SHORT-1: climax bar high.
-        Fallback: 2% above current price.
+    LONG: stop = trigger bar's low (fallback 2% below price).
+    SHORT: stop = trigger bar's high (fallback 2% above price).
     """
     if match.signals:
         trigger = match.signals[0]
@@ -58,6 +53,46 @@ def _compute_stop(match: SetupMatch, current_price: float) -> float:
         if bar_low is not None:
             return float(bar_low)
     return current_price * 0.98
+
+
+def _compute_stop_atr(
+    direction: str,
+    current_price: float,
+    atr_value: float,
+    multiplier: float,
+) -> float:
+    """Compute stop using ATR distance.
+
+    LONG:  stop = current_price - (ATR × multiplier)
+    SHORT: stop = current_price + (ATR × multiplier)
+    """
+    distance = atr_value * multiplier
+    if direction == "SHORT":
+        return current_price + distance
+    return current_price - distance
+
+
+def _compute_stop(
+    match: SetupMatch,
+    current_price: float,
+    config: VPAConfig,
+    atr_value: float = 0.0,
+) -> tuple[float, str]:
+    """Compute stop level and method label.
+
+    When config.atr.enabled and atr_value > 0, uses ATR-based stop.
+    Otherwise falls back to bar-based stop placement.
+
+    Returns (stop_price, method) where method is "ATR" or "BAR".
+    """
+    if config.atr.enabled and atr_value > 0:
+        stop = _compute_stop_atr(
+            match.direction, current_price,
+            atr_value, config.atr.stop_multiplier,
+        )
+        return stop, "ATR"
+
+    return _compute_stop_bar_based(match, current_price), "BAR"
 
 
 def _compute_size(
@@ -83,6 +118,7 @@ def evaluate_risk(
     account: AccountState,
     context: ContextSnapshot,
     config: VPAConfig,
+    atr_value: float = 0.0,
 ) -> TradeIntent:
     """Evaluate a completed setup match and produce a TradeIntent.
 
@@ -98,6 +134,9 @@ def evaluate_risk(
         ContextSnapshot for dominant alignment check.
     config:
         VPA configuration (risk params, execution semantics).
+    atr_value:
+        Current ATR value (0.0 if unavailable). Used for
+        volatility-adaptive stop placement when config.atr.enabled.
 
     Returns
     -------
@@ -127,7 +166,9 @@ def evaluate_risk(
 
     # --- Compute stop and size ---
 
-    stop = _compute_stop(match, current_price)
+    stop, stop_method = _compute_stop(match, current_price, config, atr_value)
+    if stop_method == "ATR":
+        rationale.append(f"stop:ATR({config.atr.period})x{config.atr.stop_multiplier}")
     risk_pct = config.risk.risk_pct_per_trade
 
     if config.gates.ctx2_dominant_alignment_policy == "REDUCE_RISK":

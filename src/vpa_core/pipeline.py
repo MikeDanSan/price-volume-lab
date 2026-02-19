@@ -17,6 +17,7 @@ from vpa_core.contracts import (
     SignalEvent,
     TradeIntent,
 )
+from vpa_core.atr import compute_atr
 from vpa_core.context_gates import GateResult, apply_gates
 from vpa_core.feature_engine import extract_features
 from vpa_core.relative_volume import average_volume
@@ -110,9 +111,11 @@ def run_pipeline(
     matches = composer.process_signals(gate_result.actionable, bar_index, context)
 
     current_price = bars[-1].close
+    atr_value = compute_atr(bars, period=config.atr.period) if config.atr.enabled else 0.0
+
     intents: list[TradeIntent] = []
     for match in matches:
-        intent = evaluate_risk(match, current_price, account, context, config)
+        intent = evaluate_risk(match, current_price, account, context, config, atr_value=atr_value)
         intents.append(intent)
 
     return PipelineResult(

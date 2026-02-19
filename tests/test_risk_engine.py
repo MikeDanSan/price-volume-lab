@@ -98,6 +98,20 @@ def _cfg_with_policy(tmp_path, policy: str) -> VPAConfig:
     return load_vpa_config(config_path=p)
 
 
+def _cfg_with_atr(tmp_path, *, enabled: bool = True, period: int = 14,
+                  multiplier: float = 1.5) -> VPAConfig:
+    """Load config with specific ATR settings."""
+    import json
+    from config.vpa_config import DEFAULT_CONFIG_PATH
+
+    with open(DEFAULT_CONFIG_PATH) as f:
+        data = json.load(f)
+    data["atr"] = {"enabled": enabled, "period": period, "stop_multiplier": multiplier}
+    p = tmp_path / "atr_risk.json"
+    p.write_text(json.dumps(data))
+    return load_vpa_config(config_path=p)
+
+
 # ---------------------------------------------------------------------------
 # Sizing calculation
 # ---------------------------------------------------------------------------
@@ -300,3 +314,77 @@ class TestShortRationale:
         assert intent.intent_id == "TI-ENTRY-SHORT-1-bar5"
         assert intent.setup == "ENTRY-SHORT-1"
         assert intent.direction == "SHORT"
+
+
+# ---------------------------------------------------------------------------
+# ATR-based stop placement
+# ---------------------------------------------------------------------------
+
+
+class TestAtrStop:
+    """When atr.enabled=true and atr_value > 0, stop uses ATR distance."""
+
+    def test_long_atr_stop(self, tmp_path) -> None:
+        """LONG stop = price - (ATR × multiplier) = 100 - (3 × 1.5) = 95.5."""
+        cfg = _cfg_with_atr(tmp_path, enabled=True, multiplier=1.5)
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(), cfg, atr_value=3.0)
+        assert intent.risk_plan.stop == pytest.approx(95.5)
+
+    def test_short_atr_stop(self, tmp_path) -> None:
+        """SHORT stop = price + (ATR × multiplier) = 100 + (3 × 1.5) = 104.5."""
+        cfg = _cfg_with_atr(tmp_path, enabled=True, multiplier=1.5)
+        intent = evaluate_risk(_short_match(bar_high=102.0), 100.0, _account(), _context(), cfg, atr_value=3.0)
+        assert intent.risk_plan.stop == pytest.approx(104.5)
+
+    def test_atr_stop_changes_sizing(self, tmp_path) -> None:
+        """Wider ATR stop → smaller position size (risk stays constant)."""
+        cfg = _cfg_with_atr(tmp_path, enabled=True, multiplier=2.0)
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(), cfg, atr_value=5.0)
+        # stop = 100 - (5 × 2.0) = 90, risk_per_share = 10
+        # size = (100000 × 0.005) / 10 = 50
+        assert intent.risk_plan.stop == pytest.approx(90.0)
+        assert intent.risk_plan.size == 50
+
+    def test_atr_rationale_annotation(self, tmp_path) -> None:
+        cfg = _cfg_with_atr(tmp_path, enabled=True, period=14, multiplier=1.5)
+        intent = evaluate_risk(_match(), 100.0, _account(), _context(), cfg, atr_value=3.0)
+        assert any("stop:ATR(14)x1.5" in r for r in intent.rationale)
+
+    def test_atr_disabled_uses_bar_based(self, cfg: VPAConfig) -> None:
+        """Default config has atr.enabled=false → bar-based stop even with atr_value."""
+        assert cfg.atr.enabled is False
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(), cfg, atr_value=3.0)
+        assert intent.risk_plan.stop == 98.0
+
+    def test_atr_zero_falls_back_to_bar(self, tmp_path) -> None:
+        """ATR enabled but value is 0 → falls back to bar-based."""
+        cfg = _cfg_with_atr(tmp_path, enabled=True)
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(), cfg, atr_value=0.0)
+        assert intent.risk_plan.stop == 98.0
+
+    def test_atr_multiplier_respected(self, tmp_path) -> None:
+        """Different multipliers produce different stops."""
+        cfg_tight = _cfg_with_atr(tmp_path, enabled=True, multiplier=1.0)
+        cfg_wide = _cfg_with_atr(tmp_path, enabled=True, multiplier=3.0)
+        intent_tight = evaluate_risk(_match(), 100.0, _account(), _context(), cfg_tight, atr_value=2.0)
+        intent_wide = evaluate_risk(_match(), 100.0, _account(), _context(), cfg_wide, atr_value=2.0)
+        # tight: 100 - 2 = 98, wide: 100 - 6 = 94
+        assert intent_tight.risk_plan.stop == pytest.approx(98.0)
+        assert intent_wide.risk_plan.stop == pytest.approx(94.0)
+
+    def test_atr_with_countertrend(self, tmp_path) -> None:
+        """ATR stop + countertrend risk reduction both apply."""
+        cfg = _cfg_with_atr(tmp_path, enabled=True, multiplier=1.5)
+        intent = evaluate_risk(
+            _match(), 100.0, _account(),
+            _context(DominantAlignment.AGAINST), cfg, atr_value=3.0,
+        )
+        assert intent.risk_plan.stop == pytest.approx(95.5)
+        assert intent.risk_plan.risk_pct == pytest.approx(0.0025)
+        assert "CTX-2:AGAINST(risk_reduced)" in intent.rationale
+        assert any("stop:ATR" in r for r in intent.rationale)
+
+    def test_no_atr_rationale_when_bar_based(self, cfg: VPAConfig) -> None:
+        """Bar-based stop → no ATR annotation in rationale."""
+        intent = evaluate_risk(_match(bar_low=98.0), 100.0, _account(), _context(), cfg)
+        assert not any("stop:ATR" in r for r in intent.rationale)
