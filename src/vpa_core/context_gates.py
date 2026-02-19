@@ -7,6 +7,8 @@ that must be applied *before* any entry logic.
 Implemented gates:
     CTX-1 — Trend-location-first: anomalies require known trend location.
     CTX-2 — Dominant alignment: block counter-trend signals when policy is DISALLOW.
+           When daily_context is provided, alignment is resolved per-signal
+           based on the signal's direction_bias vs the daily trend.
     CTX-3 — Congestion awareness: block anomalies inside congestion zones.
 
 Returns both actionable and blocked lists for full observability.
@@ -99,11 +101,17 @@ def apply_gates(
     signals: list[SignalEvent],
     context: ContextSnapshot,
     config: VPAConfig,
+    daily_context: ContextSnapshot | None = None,
 ) -> GateResult:
     """Apply all context gates to a list of signals.
 
     Gate ordering: CTX-1 → CTX-2 → CTX-3. A signal blocked by
     an earlier gate is not checked against later gates.
+
+    When ``daily_context`` is provided, CTX-2 resolves dominant
+    alignment **per signal** based on the signal's direction_bias
+    vs the daily trend. This enables correct handling of mixed
+    bullish/bearish signals in the same bar.
 
     Parameters
     ----------
@@ -113,6 +121,9 @@ def apply_gates(
         Current ContextSnapshot for the timeframe.
     config:
         VPA configuration (gate toggles).
+    daily_context:
+        Optional daily-timeframe ContextSnapshot. When provided,
+        enriches per-signal dominant alignment for CTX-2.
 
     Returns
     -------
@@ -126,9 +137,11 @@ def apply_gates(
     gate_checks = [_check_ctx_1, _check_ctx_2, _check_ctx_3]
 
     for signal in signals:
+        effective_context = _enrich_for_signal(context, daily_context, signal)
+
         block_reason: str | None = None
         for check in gate_checks:
-            block_reason = check(signal, context, config)
+            block_reason = check(signal, effective_context, config)
             if block_reason is not None:
                 break
 
@@ -144,3 +157,15 @@ def apply_gates(
         blocked=blocked,
         block_reasons=reasons,
     )
+
+
+def _enrich_for_signal(
+    context: ContextSnapshot,
+    daily_context: ContextSnapshot | None,
+    signal: SignalEvent,
+) -> ContextSnapshot:
+    """Resolve per-signal dominant alignment when daily context is available."""
+    if daily_context is None:
+        return context
+    from vpa_core.daily_context import enrich_context_with_daily
+    return enrich_context_with_daily(context, daily_context, signal.direction_bias)

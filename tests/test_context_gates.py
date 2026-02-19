@@ -1,4 +1,7 @@
-"""Tests for Context Gates: CTX-1 and CTX-2."""
+"""Tests for Context Gates: CTX-1, CTX-2, and CTX-3.
+
+Includes per-signal dominant alignment via daily_context (multi-timeframe).
+"""
 
 from datetime import datetime, timezone
 
@@ -427,3 +430,112 @@ class TestAllThreeGatesInteraction:
         assert len(result.blocked) == 1
         reason = list(result.block_reasons.values())[0]
         assert "CTX-1" in reason
+
+
+# ---------------------------------------------------------------------------
+# CTX-2 with daily_context (per-signal dominant alignment)
+# ---------------------------------------------------------------------------
+
+
+def _bullish_signal(*, requires_gate: bool = True) -> SignalEvent:
+    return SignalEvent(
+        id="VAL-1", name="Validation", tf="15m", ts=TS,
+        signal_class=SignalClass.VALIDATION, direction_bias="BULLISH",
+        requires_context_gate=requires_gate,
+    )
+
+
+def _bearish_signal(*, requires_gate: bool = True) -> SignalEvent:
+    return SignalEvent(
+        id="WEAK-1", name="Weakness", tf="15m", ts=TS,
+        signal_class=SignalClass.WEAKNESS, direction_bias="BEARISH",
+        requires_context_gate=requires_gate,
+    )
+
+
+def _daily_ctx(trend: Trend = Trend.UP) -> ContextSnapshot:
+    return ContextSnapshot(
+        tf="1d", trend=trend, trend_strength=TrendStrength.MODERATE,
+        trend_location=TrendLocation.MIDDLE, congestion=Congestion(active=False),
+    )
+
+
+class TestCTX2WithDailyContext:
+    """Per-signal alignment via daily_context parameter."""
+
+    def test_bullish_with_daily_up_passes(self, tmp_path) -> None:
+        """Bullish signal + daily UP → WITH → not blocked."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.UP)
+        result = apply_gates([_bullish_signal()], context, cfg, daily_context=daily)
+
+        assert len(result.actionable) == 1
+        assert len(result.blocked) == 0
+
+    def test_bullish_against_daily_down_blocked(self, tmp_path) -> None:
+        """Bullish signal + daily DOWN → AGAINST → blocked by DISALLOW."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.DOWN)
+        result = apply_gates([_bullish_signal()], context, cfg, daily_context=daily)
+
+        assert len(result.blocked) == 1
+        assert "CTX-2" in list(result.block_reasons.values())[0]
+
+    def test_bearish_with_daily_down_passes(self, tmp_path) -> None:
+        """Bearish signal + daily DOWN → WITH → not blocked."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.DOWN)
+        result = apply_gates([_bearish_signal()], context, cfg, daily_context=daily)
+
+        assert len(result.actionable) == 1
+
+    def test_bearish_against_daily_up_blocked(self, tmp_path) -> None:
+        """Bearish signal + daily UP → AGAINST → blocked."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.UP)
+        result = apply_gates([_bearish_signal()], context, cfg, daily_context=daily)
+
+        assert len(result.blocked) == 1
+        assert "CTX-2" in list(result.block_reasons.values())[0]
+
+    def test_mixed_signals_per_signal_alignment(self, tmp_path) -> None:
+        """Bullish WITH + bearish AGAINST in same bar: bullish passes, bearish blocked."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.UP)
+        signals = [_bullish_signal(), _bearish_signal()]
+        result = apply_gates(signals, context, cfg, daily_context=daily)
+
+        assert len(result.actionable) == 1
+        assert result.actionable[0].id == "VAL-1"
+        assert len(result.blocked) == 1
+        assert result.blocked[0].id == "WEAK-1"
+
+    def test_no_daily_context_falls_back_to_static(self, tmp_path) -> None:
+        """Without daily_context, uses context's existing dominant_alignment."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.AGAINST)
+        result = apply_gates([_bullish_signal()], context, cfg, daily_context=None)
+
+        assert len(result.blocked) == 1
+
+    def test_daily_unknown_trend_gives_unknown_alignment(self, tmp_path) -> None:
+        """Daily UNKNOWN trend → alignment UNKNOWN → not blocked even with DISALLOW."""
+        cfg = _cfg_with_ctx2_policy(tmp_path, "DISALLOW")
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.UNKNOWN)
+        result = apply_gates([_bullish_signal()], context, cfg, daily_context=daily)
+
+        assert len(result.actionable) == 1
+
+    def test_reduce_risk_policy_passes_with_daily(self, cfg: VPAConfig) -> None:
+        """REDUCE_RISK policy passes regardless of daily alignment."""
+        daily = _daily_ctx(Trend.DOWN)
+        context = _context(dominant_alignment=DominantAlignment.UNKNOWN)
+        result = apply_gates([_bullish_signal()], context, cfg, daily_context=daily)
+
+        assert len(result.actionable) == 1

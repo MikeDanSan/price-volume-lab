@@ -1,4 +1,7 @@
-"""Integration tests: synthetic bars through the full VPA pipeline."""
+"""Integration tests: synthetic bars through the full VPA pipeline.
+
+Includes multi-timeframe tests with daily_context parameter.
+"""
 
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -362,3 +365,112 @@ class TestVolumeGuard:
         result = run_pipeline(bars, bar_index=19, context=_context(),
                               account=_account(), config=cfg, composer=composer)
         assert result.gate_result is not None
+
+
+# ---------------------------------------------------------------------------
+# 5. Multi-timeframe: daily_context parameter
+# ---------------------------------------------------------------------------
+
+
+def _daily_ctx(trend: Trend = Trend.UP) -> ContextSnapshot:
+    return ContextSnapshot(
+        tf="1d", trend=trend, trend_strength=TrendStrength.MODERATE,
+        trend_location=TrendLocation.MIDDLE, congestion=Congestion(active=False),
+    )
+
+
+def _cfg_with_disallow_policy(tmp_path: Path) -> VPAConfig:
+    """Load config with ctx2_dominant_alignment_policy = DISALLOW."""
+    import json
+    from config.vpa_config import DEFAULT_CONFIG_PATH
+    with open(DEFAULT_CONFIG_PATH) as f:
+        data = json.load(f)
+    data["gates"]["ctx2_dominant_alignment_policy"] = "DISALLOW"
+    p = tmp_path / "disallow_cfg.json"
+    p.write_text(json.dumps(data))
+    return load_vpa_config(config_path=p)
+
+
+class TestMultiTimeframe:
+    """Pipeline with daily_context for multi-timeframe dominant alignment."""
+
+    def test_no_daily_context_unchanged(self, cfg: VPAConfig) -> None:
+        """Without daily_context, pipeline behaves exactly as before."""
+        bars = _baseline_bars(20)
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=250_000, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        result = run_pipeline(bars, bar_index=20, context=_context(),
+                              account=_account(), config=cfg, composer=composer)
+        assert len(result.signals) >= 1
+        assert result.gate_result is not None
+
+    def test_daily_up_passes_bullish_signal(self, tmp_path: Path) -> None:
+        """Bullish VAL-1 + daily UP → WITH → passes CTX-2 DISALLOW."""
+        cfg = _cfg_with_disallow_policy(tmp_path)
+        bars = _baseline_bars(20)
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=250_000, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        ctx = _context(alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.UP)
+        result = run_pipeline(bars, bar_index=20, context=ctx,
+                              account=_account(), config=cfg, composer=composer,
+                              daily_context=daily)
+
+        bullish_signals = [s for s in result.signals if "BULLISH" in s.direction_bias]
+        bullish_actionable = [s for s in result.gate_result.actionable
+                              if "BULLISH" in s.direction_bias]
+        assert len(bullish_signals) >= 1
+        assert len(bullish_actionable) >= 1
+
+    def test_daily_up_blocks_bearish_gated_signal(self, tmp_path: Path) -> None:
+        """ANOM-1 (BEARISH, gated) + daily UP → AGAINST → blocked by DISALLOW.
+
+        Wide-spread low-volume bar triggers ANOM-1 (direction_bias=BEARISH_OR_WAIT,
+        requires_context_gate=True). Daily trend is UP, so BEARISH is AGAINST.
+        """
+        cfg = _cfg_with_disallow_policy(tmp_path)
+        bars = _baseline_bars(20)
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=1_000, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        ctx = _context(alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.UP)
+        result = run_pipeline(bars, bar_index=20, context=ctx,
+                              account=_account(), config=cfg, composer=composer,
+                              daily_context=daily)
+
+        gated_bearish = [s for s in result.signals
+                         if s.requires_context_gate and "BEARISH" in s.direction_bias]
+        assert len(gated_bearish) >= 1
+        blocked_bearish = [s for s in result.gate_result.blocked
+                           if "BEARISH" in s.direction_bias]
+        assert len(blocked_bearish) >= 1
+        assert any("CTX-2" in r for r in result.gate_result.block_reasons.values())
+
+    def test_daily_context_does_not_affect_reduce_risk_policy(self, cfg: VPAConfig) -> None:
+        """Default REDUCE_RISK policy passes all signals regardless of daily trend."""
+        bars = _baseline_bars(20)
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=250_000, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        ctx = _context(alignment=DominantAlignment.UNKNOWN)
+        daily = _daily_ctx(Trend.DOWN)
+        result = run_pipeline(bars, bar_index=20, context=ctx,
+                              account=_account(), config=cfg, composer=composer,
+                              daily_context=daily)
+
+        assert len(result.gate_result.blocked) == 0

@@ -51,6 +51,7 @@ def run_pipeline(
     config: VPAConfig,
     composer: SetupComposer,
     tf: str = "15m",
+    daily_context: ContextSnapshot | None = None,
 ) -> PipelineResult:
     """Process one bar through the full VPA pipeline.
 
@@ -77,6 +78,10 @@ def run_pipeline(
         Stateful SetupComposer instance (persists across bars).
     tf:
         Timeframe label.
+    daily_context:
+        Optional daily-timeframe ContextSnapshot for multi-timeframe
+        analysis. When provided, CTX-2 resolves per-signal dominant
+        alignment based on the daily trend.
 
     Returns
     -------
@@ -100,7 +105,7 @@ def run_pipeline(
         sig.evidence.setdefault("bar_low", current_bar.low)
         sig.evidence.setdefault("bar_high", current_bar.high)
 
-    gate_result = apply_gates(signals, context, config)
+    gate_result = apply_gates(signals, context, config, daily_context=daily_context)
 
     matches = composer.process_signals(gate_result.actionable, bar_index, context)
 
