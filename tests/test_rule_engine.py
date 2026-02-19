@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules, evaluate_trend_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_trend_anom_1, detect_trend_anom_2, detect_trend_val_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_cluster_rules, evaluate_rules, evaluate_trend_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -1185,4 +1185,169 @@ class TestTRENDVAL1andANOM1MutualExclusion:
     def test_no_trend_signals_on_unknown(self, cfg: VPAConfig) -> None:
         ctx = _context(trend=Trend.UNKNOWN, volume_trend=VolumeTrend.UNKNOWN)
         signals = evaluate_trend_rules(ctx, cfg)
+        assert signals == []
+
+
+# ---------------------------------------------------------------------------
+# TREND-ANOM-2: sequential anomaly cluster (multi-bar)
+# ---------------------------------------------------------------------------
+
+
+from vpa_core.contracts import Bar
+
+
+def _bar(
+    day: int,
+    o: float, h: float, l: float, c: float,
+    v: int = 1_000_000,
+) -> Bar:
+    return Bar(
+        open=o, high=h, low=l, close=c, volume=v,
+        timestamp=datetime(2026, 2, day, 14, 0, tzinfo=timezone.utc),
+        symbol="SPY",
+    )
+
+
+def _anomaly_cluster_bars(
+    *,
+    n_prefix: int = 20,
+    normal_vol: int = 1000,
+    normal_spread: float = 1.0,
+    cluster_vols: list[int] | None = None,
+    cluster_spreads: list[float] | None = None,
+) -> list[Bar]:
+    """Build bars with a stable prefix followed by a configurable cluster window.
+
+    The prefix establishes a baseline (avg vol = normal_vol, avg spread = normal_spread).
+    The trailing bars can have high vol + narrow spread (anomaly) or not.
+    """
+    bars: list[Bar] = []
+    base = 100.0
+    for i in range(n_prefix):
+        o = base + i * 0.1
+        c = o + normal_spread
+        bars.append(_bar(min(i + 1, 28), o, c + 0.5, o - 0.5, c, v=normal_vol))
+
+    if cluster_vols and cluster_spreads:
+        for j, (vol, spread) in enumerate(zip(cluster_vols, cluster_spreads)):
+            o = base + (n_prefix + j) * 0.1
+            c = o + spread
+            bars.append(_bar(min(n_prefix + j + 1, 28), o, c + 0.5, o - 0.5, c, v=vol))
+
+    return bars
+
+
+class TestTRENDANOM2:
+    """TREND-ANOM-2: >= 2 anomaly bars (high vol + modest spread) in K-bar window."""
+
+    def test_fires_on_two_anomaly_bars(self, cfg: VPAConfig) -> None:
+        """Two bars with vol >> avg and narrow spread in the window → fires."""
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 2500, 1000, 1000, 1000],
+            cluster_spreads=[0.3, 0.3, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is not None
+        assert signal.id == "TREND-ANOM-2"
+        assert signal.signal_class == SignalClass.ANOMALY
+        assert signal.direction_bias == "BEARISH_OR_WAIT"
+        assert signal.requires_context_gate is True
+        assert signal.evidence["anomaly_count"] >= 2
+
+    def test_fires_on_three_anomaly_bars(self, cfg: VPAConfig) -> None:
+        """Three anomaly bars → higher count in evidence."""
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 2500, 2500, 1000, 1000],
+            cluster_spreads=[0.3, 0.3, 0.3, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is not None
+        assert signal.evidence["anomaly_count"] >= 3
+
+    def test_no_fire_single_anomaly(self, cfg: VPAConfig) -> None:
+        """Only one anomaly bar → does not meet threshold of 2."""
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 1000, 1000, 1000, 1000],
+            cluster_spreads=[0.3, 1.0, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is None
+
+    def test_no_fire_all_normal(self, cfg: VPAConfig) -> None:
+        """All bars are normal → no anomaly cluster."""
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[1000, 1000, 1000, 1000, 1000],
+            cluster_spreads=[1.0, 1.0, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is None
+
+    def test_no_fire_high_vol_wide_spread(self, cfg: VPAConfig) -> None:
+        """High volume but WIDE spread = validation, not anomaly."""
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 2500, 1000, 1000, 1000],
+            cluster_spreads=[2.0, 2.0, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is None
+
+    def test_no_fire_low_vol_narrow_spread(self, cfg: VPAConfig) -> None:
+        """Low volume + narrow spread = supply test, not anomaly cluster."""
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[500, 500, 1000, 1000, 1000],
+            cluster_spreads=[0.3, 0.3, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is None
+
+    def test_not_enough_bars(self, cfg: VPAConfig) -> None:
+        """Fewer bars than needed for lookback → no signal."""
+        bars = [_bar(1, 100, 101, 99, 100.5, v=2500)]
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is None
+
+    def test_evidence_includes_positions(self, cfg: VPAConfig) -> None:
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 2500, 1000, 1000, 1000],
+            cluster_spreads=[0.3, 0.3, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg)
+        assert signal is not None
+        assert "anomaly_positions" in signal.evidence
+        assert signal.evidence["window"] == cfg.trend.window_K
+
+    def test_timeframe_propagated(self, cfg: VPAConfig) -> None:
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 2500, 1000, 1000, 1000],
+            cluster_spreads=[0.3, 0.3, 1.0, 1.0, 1.0],
+        )
+        signal = detect_trend_anom_2(bars, cfg, tf="1h")
+        assert signal is not None
+        assert signal.tf == "1h"
+
+    def test_evaluate_cluster_rules_orchestrator(self, cfg: VPAConfig) -> None:
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[2500, 2500, 1000, 1000, 1000],
+            cluster_spreads=[0.3, 0.3, 1.0, 1.0, 1.0],
+        )
+        signals = evaluate_cluster_rules(bars, cfg, "15m")
+        ids = {s.id for s in signals}
+        assert "TREND-ANOM-2" in ids
+
+    def test_evaluate_cluster_rules_empty_on_normal(self, cfg: VPAConfig) -> None:
+        bars = _anomaly_cluster_bars(
+            normal_vol=1000, normal_spread=1.0,
+            cluster_vols=[1000, 1000, 1000, 1000, 1000],
+            cluster_spreads=[1.0, 1.0, 1.0, 1.0, 1.0],
+        )
+        signals = evaluate_cluster_rules(bars, cfg, "15m")
         assert signals == []

@@ -277,6 +277,29 @@ rules:
     tests_required:
       - "FXT-TREND-ANOM-1-basic"
 
+  - id: "TREND-ANOM-2"
+    type: "cluster_rule"
+    class: "ANOMALY"
+    direction_bias: "BEARISH_OR_WAIT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "within last window_K bars"
+        - "count bars where: vol_rel > high_gt AND spread_rel <= wide_gt"
+        - "anomaly_count >= 2"
+    emits:
+      signal_event: "WEAKNESS_CLUSTER_HIGH_PRIORITY"
+    notes: >
+      Couling: repeated anomalies add confirmation; alarm bells ringing
+      loud and clear. Multi-bar cluster evidence is stronger than a single
+      anomaly bar. Counts ANOM-2-type conditions across the trend window.
+    tests_required:
+      - "FXT-TREND-ANOM-2-basic"
+
   - id: "TEST-SUP-2"
     type: "atomic_rule"
     class: "TEST"

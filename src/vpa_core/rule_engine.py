@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from vpa_core.contracts import (
+    Bar,
     CandleFeatures,
     CandleType,
     ContextSnapshot,
@@ -765,6 +766,88 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ---------------------------------------------------------------------------
+# TREND-ANOM-2 — Sequential anomaly cluster (escalating warning)
+# Canonical: VPA_ACTIONABLE_RULES §4 — repeated anomalies = alarm bells
+# ---------------------------------------------------------------------------
+
+
+def _count_anomaly_bars(bars: list[Bar], config: VPAConfig, window: int) -> tuple[int, list[int]]:
+    """Count bars in the last *window* positions that exhibit anomaly conditions.
+
+    Anomaly condition (a): vol_rel > high_gt AND spread_rel <= wide_gt
+    (high effort, little result — the core ANOM-2 bar-level pattern).
+
+    Returns (count, list_of_relative_positions).
+    """
+    avg_n = config.vol.avg_window_N
+    needed = window + avg_n
+    if len(bars) < needed:
+        return 0, []
+
+    count = 0
+    positions: list[int] = []
+
+    for offset in range(window, 0, -1):
+        idx = len(bars) - offset
+        bar = bars[idx]
+        lookback = bars[idx - avg_n:idx]
+        if not lookback:
+            continue
+
+        avg_vol = sum(b.volume for b in lookback) / len(lookback)
+        vol_rel = bar.volume / avg_vol if avg_vol > 0 else 0.0
+
+        spread = abs(bar.close - bar.open)
+        avg_spread = sum(abs(b.close - b.open) for b in lookback) / len(lookback)
+        spread_rel = spread / avg_spread if avg_spread > 0 else 0.0
+
+        is_high_vol = vol_rel > config.vol.thresholds.high_gt
+        is_modest_spread = spread_rel <= config.spread.thresholds.wide_gt
+
+        if is_high_vol and is_modest_spread:
+            count += 1
+            positions.append(-offset)
+
+    return count, positions
+
+
+def detect_trend_anom_2(bars: list[Bar], config: VPAConfig, tf: str = "15m") -> SignalEvent | None:
+    """Detect TREND-ANOM-2: sequential anomaly cluster in recent bars.
+
+    Conditions (from VPA_ACTIONABLE_RULES §4):
+        - Within last K bars (config.trend.window_K), count anomaly bars
+          where: high volume + modest spread (ANOM-2 bar-level condition)
+        - Trigger when anomaly_count >= 2
+
+    Couling: repeated anomalies add confirmation; "alarm bells ringing
+    loud and clear." Multi-bar evidence is stronger than a single anomaly.
+
+    Requires CTX-1 gate (trend location must be known).
+    """
+    window = config.trend.window_K
+    count, positions = _count_anomaly_bars(bars, config, window)
+
+    if count < 2:
+        return None
+
+    return SignalEvent(
+        id="TREND-ANOM-2",
+        name="SequentialAnomalyCluster_EscalatingWarning",
+        tf=tf,
+        ts=_now(),
+        signal_class=SignalClass.ANOMALY,
+        direction_bias="BEARISH_OR_WAIT",
+        priority=1,
+        evidence={
+            "anomaly_count": count,
+            "window": window,
+            "anomaly_positions": positions,
+        },
+        requires_context_gate=True,
+    )
+
+
 _TREND_RULE_DETECTORS = [
     detect_trend_val_1,
     detect_trend_anom_1,
@@ -786,4 +869,21 @@ def evaluate_trend_rules(
         result = detector(context, config)
         if result is not None:
             signals.append(result)
+    return signals
+
+
+def evaluate_cluster_rules(
+    bars: list[Bar],
+    config: VPAConfig,
+    tf: str = "15m",
+) -> list[SignalEvent]:
+    """Run multi-bar cluster rules that need bar history.
+
+    These rules count patterns across a window of bars, unlike bar-level
+    rules (single bar) or trend-level rules (context-driven).
+    """
+    signals: list[SignalEvent] = []
+    result = detect_trend_anom_2(bars, config, tf)
+    if result is not None:
+        signals.append(result)
     return signals
