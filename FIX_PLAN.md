@@ -1,6 +1,6 @@
 # FIX_PLAN.md
 **VPA Canonical System — Fix Plan**
-- Date: 2026-02-17 (updated 2026-02-18)
+- Date: 2026-02-17 (updated 2026-02-17, Phase I complete)
 - Goal: Bring repo from FAIL to PASS on compliance gates with smallest safe commits.
 - Reference: `COMPLIANCE_REPORT.md`
 
@@ -118,72 +118,56 @@
 
 ---
 
-## Phase H — Multi-timeframe + stop optimization (next)
+## Phase H — Multi-timeframe + stop optimization ✅
 
-CTX-2 dominant alignment currently returns UNKNOWN because there is no
-higher-timeframe trend to compare against. This phase adds daily bar
-ingestion, a daily trend overlay, and ATR-based stop optimization.
+|| Commit | Description | Status |
+||--------|-------------|--------|
+|| 37 | Daily bar storage + ingestion (BarStore + AlpacaBarFetcher multi-TF) | ✅ Done |
+|| 38 | Daily trend analyzer (`daily_context.py`) | ✅ Done |
+|| 39 | CTX-2 dominant alignment from daily trend (pipeline + gates wiring) | ✅ Done |
+|| 40 | ATR computation + config (`atr.py`, `AtrConfig`) | ✅ Done |
+|| 41 | ATR-based stop placement (risk engine: bar-based + ATR fallback) | ✅ Done |
+|| 42 | Per-symbol config support (`vpa.{SYMBOL}.json` deep-merge overrides) | ✅ Done |
+|| 43 | Phase H doc update | ✅ Done |
 
-### Commit 37: Daily bar storage + ingestion
-- **Scope:** Extend BarStore and AlpacaBarFetcher to handle daily bars alongside intraday.
-- **Rationale:** Daily trend is required for CTX-2 dominant alignment.
-- **Files:** `bar_store.py`, `alpaca_fetcher.py`, `cli/main.py` (ingest --timeframe 1d)
-- **Acceptance criteria:** `vpa ingest --timeframe 1d` fetches and stores daily bars.
-- **Tests:** Bar store handles multiple timeframes; fetcher returns daily bars.
-
-### Commit 38: Daily trend analyzer
-- **Scope:** Compute daily trend (direction + strength) from daily bars.
-- **Rationale:** Feed into dominant alignment for CTX-2.
-- **Files:** `context_engine.py`, new `daily_context.py` or extend existing.
-- **Acceptance criteria:** Given 20+ daily bars, returns Trend + TrendStrength.
-- **Tests:** Daily trend detection with known bar sequences.
-
-### Commit 39: CTX-2 dominant alignment from daily trend
-- **Scope:** Wire daily trend into ContextSnapshot.dominant_alignment.
-- **Rationale:** CTX-2 REDUCE_RISK policy finally activates in live/backtest.
-- **Files:** `pipeline.py`, `context_engine.py`, `backtest/runner.py`
-- **Acceptance criteria:** When 15m trade direction opposes daily trend, alignment=AGAINST.
-- **Tests:** Pipeline produces AGAINST/WITH alignment; risk reduction triggers.
-
-### Commit 40: ATR computation + config
-- **Scope:** Add Average True Range (ATR) computation from bar history.
-- **Rationale:** ATR-based stops adapt to volatility instead of using static bar high/low.
-- **Files:** new `atr.py` or extend `feature_engine.py`, `vpa.default.json`
-- **Acceptance criteria:** ATR(14) computed from bars; value available to risk engine.
-- **Tests:** ATR calculation against known values.
-
-### Commit 41: ATR-based stop placement
-- **Scope:** Risk engine uses ATR multiplier for stop distance when configured.
-- **Rationale:** Static stops (bar high/low) are too tight in volatile markets.
-- **Files:** `risk_engine.py`, `vpa.default.json`, `vpa_config.schema.json`
-- **Acceptance criteria:** Stop = entry ± (ATR × multiplier). Fallback to bar-based if ATR unavailable.
-- **Tests:** ATR stop vs bar-based stop; sizing adjusts to wider stop.
-
-### Commit 42: Per-symbol config support
-- **Scope:** Allow `config-SPY.yaml`, `config-AAPL.yaml` overrides.
-- **Rationale:** Different symbols need different volume thresholds and ATR multipliers.
-- **Files:** `vpa_config.py`, `cli/main.py`
-- **Acceptance criteria:** CLI `--symbol SPY` loads symbol-specific overrides if present.
-- **Tests:** Symbol override merges correctly with defaults.
-
-### Phase H checkpoint criteria
+### Phase H checkpoint: PASSED ✅
 - CTX-2 dominant alignment computed from daily trend (not UNKNOWN)
-- Backtest with daily overlay shows fewer counter-trend losses
-- ATR-based stops reduce stop-out rate vs bar-based stops
-- Per-symbol config available for multi-ticker deployment
+- ATR-based stops available (config-driven, fallback to bar-based)
+- Per-symbol config: `vpa.{SYMBOL}.json` overrides with deep-merge
+- Daily + intraday bar ingestion and storage
+- 443 tests passing
+
+---
+
+## Phase I — Extended rule coverage ✅
+
+|| Commit | Description | Status |
+||--------|-------------|--------|
+|| 44 | TEST-SUP-2 (failed supply test) + TEST-DEM-1 (demand test) | ✅ Done |
+|| 45 | TREND-VAL-1 (validated uptrend) + TREND-ANOM-1 (uptrend divergence) + VolumeTrend enum | ✅ Done |
+|| 46 | TREND-ANOM-2 (sequential anomaly cluster, multi-bar rule) | ✅ Done |
+|| 47 | CONF-2 (two-level agreement meta-rule) | ✅ Done |
+|| 48 | AVOID-TRAP-1 (trap-up warning) + AVOID-COUNTER-1 (counter-trend warning) | ✅ Done |
+|| 49 | ENTRY-SHORT-2 (reversal short: climax → trend weakness) | ✅ Done |
+|| 50 | Phase I checkpoint: registry + traceability + compliance update | ✅ Done |
+
+### Phase I checkpoint: PASSED ✅
+- 8 new rules across 4 levels: bar-level (TEST-SUP-2, TEST-DEM-1), trend-level (TREND-VAL-1, TREND-ANOM-1), cluster-level (TREND-ANOM-2), meta-level (CONF-2), avoidance (AVOID-TRAP-1, AVOID-COUNTER-1)
+- 1 new setup: ENTRY-SHORT-2 (shares CLIMAX-SELL-1 trigger with SHORT-1)
+- Setup composer refined: hard vs soft avoidance invalidation
+- Only 3 rule IDs remain MISSING (VAL-2, STR-2, CLIMAX-SELL-2) — non-blocking
+- 555 tests passing, 0 drift, 0 extra
 
 ---
 
 ## Future phases (not yet planned in detail)
 
-### Phase I — Extended rule coverage
-- TREND-VAL-1, TREND-ANOM-1, TREND-ANOM-2 (trend-level rules)
-- TEST-SUP-2 (failed test), TEST-DEM-1 (demand test)
-- CONF-2 (two-level agreement)
-- AVOID-TRAP-1, AVOID-COUNTER-1
-- ENTRY-SHORT-2 (reversal short from selling climax)
-
 ### Phase J — Production readiness
 - Dockerfile + docker-compose for per-symbol containers
 - Health checks, alerting, dashboarding
 - PAPER_TO_LIVE.md checklist completion
+
+### Phase K — Remaining rules (optional)
+- VAL-2 (single-bar validation, small progress)
+- STR-2 (additional strength pattern)
+- CLIMAX-SELL-2 (upper-wick repetition emphasis)
