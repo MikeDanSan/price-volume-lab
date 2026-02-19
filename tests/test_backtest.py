@@ -288,3 +288,40 @@ class TestShortJournal:
         assert "signal" in event_types
         assert "entry" in event_types
         assert "exit" in event_types
+
+
+# ---------------------------------------------------------------------------
+# 8. Multi-timeframe backtest with daily_bars
+# ---------------------------------------------------------------------------
+
+
+def _daily_bar(day: int, close: float) -> Bar:
+    ts = datetime(2026, 2, day, 0, 0, tzinfo=timezone.utc)
+    return Bar(
+        open=close - 0.5, high=close + 1.0, low=close - 1.5,
+        close=close, volume=50_000_000, timestamp=ts, symbol="TEST",
+    )
+
+
+class TestMultiTimeframeBacktest:
+
+    def test_daily_bars_accepted(self, cfg: VPAConfig) -> None:
+        """Backtest runs with daily_bars parameter without errors."""
+        bars = _baseline_bars(25)
+        daily = [_daily_bar(i + 1, 400.0 + i * 1.5) for i in range(25)]
+        result = run_backtest(bars, "TEST", "15m", config=cfg, daily_bars=daily)
+        assert result.initial_cash == result.final_cash
+        assert len(result.trades) == 0
+
+    def test_daily_bars_none_unchanged(self, cfg: VPAConfig) -> None:
+        """Backtest without daily_bars behaves identically to before."""
+        bars = _baseline_bars(25)
+        result = run_backtest(bars, "TEST", "15m", config=cfg, daily_bars=None)
+        assert result.initial_cash == result.final_cash
+
+    def test_too_few_daily_bars_ignored(self, cfg: VPAConfig) -> None:
+        """Fewer than 10 daily bars → daily_context is None → no crash."""
+        bars = _baseline_bars(25)
+        daily = [_daily_bar(i + 1, 400.0) for i in range(5)]
+        result = run_backtest(bars, "TEST", "15m", config=cfg, daily_bars=daily)
+        assert result.initial_cash == result.final_cash

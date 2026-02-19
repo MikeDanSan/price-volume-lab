@@ -100,6 +100,7 @@ def _ingest_latest(cfg: AppConfig) -> int:
 
 def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
     """Single paper-trading evaluation cycle (ingest + pipeline + submit)."""
+    from cli.daily_helper import load_daily_context
     from cli.output import format_pipeline_scan
     from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
@@ -125,11 +126,13 @@ def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
     composer = SetupComposer(vpa_cfg)
     bar_index = len(bars) - 1
     context = analyze_context(bars, vpa_cfg, cfg.timeframe)
+    daily_ctx = load_daily_context(store, cfg.symbol, vpa_cfg)
 
     account = AccountState(equity=cfg.execution.initial_cash)
     result = run_pipeline(
         bars, bar_index=bar_index, context=context,
         account=account, config=vpa_cfg, composer=composer, tf=cfg.timeframe,
+        daily_context=daily_ctx,
     )
 
     click.echo(format_pipeline_scan(

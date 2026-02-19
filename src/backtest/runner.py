@@ -14,10 +14,12 @@ from typing import Callable
 from config.vpa_config import VPAConfig, load_vpa_config
 from vpa_core.contracts import (
     Bar,
+    ContextSnapshot,
     TradeIntent,
     TradeIntentStatus,
 )
 from vpa_core.context_engine import analyze as analyze_context
+from vpa_core.daily_context import compute_daily_context
 from vpa_core.pipeline import PipelineResult, run_pipeline
 from vpa_core.risk_engine import AccountState
 from vpa_core.setup_composer import SetupComposer
@@ -95,6 +97,7 @@ def run_backtest(
     initial_cash: float = 100_000.0,
     slippage_bps: float | None = None,
     journal_callback: Callable[[str, dict], None] | None = None,
+    daily_bars: list[Bar] | None = None,
 ) -> BacktestResult:
     """Replay bars through the canonical pipeline. Next-bar-open execution.
 
@@ -114,12 +117,19 @@ def run_backtest(
         Override slippage in basis points. If None, uses config.slippage.value.
     journal_callback:
         Optional callback for event journaling.
+    daily_bars:
+        Optional daily bars for multi-timeframe analysis. When provided,
+        computes daily context for CTX-2 dominant alignment.
     """
     if config is None:
         config = load_vpa_config()
 
     if slippage_bps is None:
         slippage_bps = config.slippage.value
+
+    daily_context: ContextSnapshot | None = None
+    if daily_bars and len(daily_bars) >= 10:
+        daily_context = compute_daily_context(daily_bars, config)
 
     now = datetime.now(timezone.utc)
     start_time = bars[0].timestamp if bars else now
@@ -223,6 +233,7 @@ def run_backtest(
             config=config,
             composer=composer,
             tf=timeframe,
+            daily_context=daily_context,
         )
         pipeline_events.append(result)
 

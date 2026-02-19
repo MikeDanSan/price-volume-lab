@@ -101,6 +101,12 @@ def backtest(ctx: click.Context, start_str: str | None, end_str: str | None) -> 
         click.echo("No bars in store. Run 'vpa ingest' first.")
         return
 
+    daily_bars = store.get_bars(cfg.symbol, "1d")
+    if daily_bars:
+        click.echo(f"Loaded {len(daily_bars)} daily bars for multi-timeframe analysis.")
+    else:
+        click.echo("No daily bars found. Run 'vpa ingest --timeframe 1d' for multi-timeframe.")
+
     journal = JournalWriter(cfg.journal.path, echo_stdout=cfg.journal.echo_stdout)
 
     def on_event(event_type: str, payload: dict) -> None:
@@ -121,6 +127,7 @@ def backtest(ctx: click.Context, start_str: str | None, end_str: str | None) -> 
         initial_cash=cfg.backtest.initial_cash,
         slippage_bps=cfg.backtest.slippage_bps,
         journal_callback=on_event,
+        daily_bars=daily_bars or None,
     )
     click.echo(format_backtest_summary(result))
 
@@ -134,6 +141,7 @@ def backtest(ctx: click.Context, start_str: str | None, end_str: str | None) -> 
 def scan(ctx: click.Context, window: int) -> None:
     """One-shot VPA analysis: show context, volume, and any detected setups with reasoning."""
     cfg = load_config(ctx.obj["config_path"])
+    from cli.daily_helper import load_daily_context
     from cli.output import format_pipeline_scan
     from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
@@ -154,11 +162,13 @@ def scan(ctx: click.Context, window: int) -> None:
     bar_index = len(bars) - 1
 
     context = analyze_context(bars, vpa_cfg, cfg.timeframe)
+    daily_ctx = load_daily_context(store, cfg.symbol, vpa_cfg)
 
     account = AccountState(equity=100_000.0)
     result = run_pipeline(
         bars, bar_index=bar_index, context=context,
         account=account, config=vpa_cfg, composer=composer, tf=cfg.timeframe,
+        daily_context=daily_ctx,
     )
 
     click.echo(format_pipeline_scan(
@@ -182,6 +192,7 @@ def paper(ctx: click.Context, window: int, live: bool) -> None:
         from cli.scheduler import run_live_loop
         run_live_loop(cfg, window)
         return
+    from cli.daily_helper import load_daily_context
     from cli.output import format_pipeline_scan
     from config.vpa_config import load_vpa_config
     from data.bar_store import BarStore
@@ -204,11 +215,13 @@ def paper(ctx: click.Context, window: int, live: bool) -> None:
     bar_index = len(bars) - 1
 
     context = analyze_context(bars, vpa_cfg, cfg.timeframe)
+    daily_ctx = load_daily_context(store, cfg.symbol, vpa_cfg)
 
     account = AccountState(equity=cfg.execution.initial_cash)
     result = run_pipeline(
         bars, bar_index=bar_index, context=context,
         account=account, config=vpa_cfg, composer=composer, tf=cfg.timeframe,
+        daily_context=daily_ctx,
     )
 
     click.echo(format_pipeline_scan(
