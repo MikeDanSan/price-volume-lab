@@ -6,6 +6,7 @@ VPA config:  reads vpa.default.json (or override), validates against JSON Schema
 """
 
 from config.loader import (
+    AlertingConfig,
     AppConfig,
     BacktestConfig,
     DataConfig,
@@ -33,6 +34,7 @@ from config.vpa_config import (
 
 __all__ = [
     # App config (YAML)
+    "AlertingConfig",
     "AppConfig",
     "BacktestConfig",
     "DataConfig",

@@ -29,3 +29,7 @@ execution:
 journal:
   path: data/journal.jsonl
   echo_stdout: false
+
+alerting:
+  structured_logs: true      # JSON events to stderr (visible via docker logs)
+  webhook_url: ""            # optional: POST trade alerts to URL (Slack/Discord)

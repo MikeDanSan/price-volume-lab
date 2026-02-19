@@ -43,6 +43,12 @@ class JournalConfig:
 
 
 @dataclass(frozen=True)
+class AlertingConfig:
+    structured_logs: bool = True
+    webhook_url: str = ""
+
+
+@dataclass(frozen=True)
 class AppConfig:
     symbol: str
     timeframe: str
@@ -50,6 +56,7 @@ class AppConfig:
     backtest: BacktestConfig
     execution: ExecutionConfig
     journal: JournalConfig
+    alerting: AlertingConfig = AlertingConfig()
 
 
 def load_config(path: str | Path = "config.yaml") -> AppConfig:
@@ -101,6 +108,12 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         echo_stdout=bool(j_raw.get("echo_stdout", False)),
     )
 
+    a_raw = raw.get("alerting", {})
+    a_cfg = AlertingConfig(
+        structured_logs=bool(a_raw.get("structured_logs", True)),
+        webhook_url=str(a_raw.get("webhook_url", "")),
+    )
+
     return AppConfig(
         symbol=raw.get("symbol", "SPY"),
         timeframe=raw.get("timeframe", "15m"),
@@ -108,4 +121,5 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
         backtest=bt_cfg,
         execution=ex_cfg,
         journal=j_cfg,
+        alerting=a_cfg,
     )

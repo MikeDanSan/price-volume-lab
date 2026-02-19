@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 import click
 
+from cli.structured_log import StructuredEventLogger
 from config.loader import AppConfig
 
 logger = logging.getLogger("vpa.scheduler")
@@ -98,7 +99,11 @@ def _ingest_latest(cfg: AppConfig) -> int:
     return len(result.bars)
 
 
-def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
+def _run_paper_cycle(
+    cfg: AppConfig,
+    window: int,
+    events: StructuredEventLogger | None = None,
+) -> None:
     """Single paper-trading evaluation cycle (ingest + pipeline + submit)."""
     from cli.daily_helper import load_daily_context
     from cli.output import format_pipeline_scan
@@ -114,6 +119,9 @@ def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
     now_et = datetime.now(ET)
     bar_count = _ingest_latest(cfg)
     click.echo(f"[{now_et:%H:%M:%S} ET] Ingested {bar_count} bar(s).")
+
+    if events:
+        events.cycle_start(bar_close=now_et.isoformat(), bars_ingested=bar_count)
 
     store = BarStore(cfg.data.bar_store_path)
     bars = store.get_bars(cfg.symbol, cfg.timeframe)
@@ -140,8 +148,17 @@ def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
         result=result, symbol=cfg.symbol, timeframe=cfg.timeframe,
     ))
 
+    if events and result.signals:
+        events.signal_detected(
+            signal_ids=[s.id for s in result.signals],
+            setup_ids=[m.setup_id for m in result.matches],
+            intent_count=len(result.intents),
+        )
+
     ready_intents = [i for i in result.intents if i.status.value == "READY"]
     if not ready_intents:
+        if events:
+            events.cycle_complete(signals=len(result.signals), intents=0)
         return
 
     executor = PaperExecutor(
@@ -159,9 +176,23 @@ def _run_paper_cycle(cfg: AppConfig, window: int) -> None:
             journal.signal(intent.setup, intent.direction, rationale_str, intent.setup)
             click.echo(f"  Paper order submitted: {order.side} {order.qty} {order.symbol} @ market")
             click.echo(f"  Setup: {intent.setup}  Stop: {intent.risk_plan.stop:.2f}")
+            if events:
+                events.trade_submitted(
+                    setup=intent.setup,
+                    direction=intent.direction,
+                    qty=order.qty,
+                    stop=intent.risk_plan.stop,
+                )
         else:
             click.echo(f"  Order rejected (risk limit or existing position for {cfg.symbol}).")
+            if events:
+                events.order_rejected(
+                    reason=f"Risk limit or existing position for {cfg.symbol}",
+                )
         break
+
+    if events:
+        events.cycle_complete(signals=len(result.signals), intents=len(ready_intents))
 
 
 def run_live_loop(cfg: AppConfig, window: int) -> None:
@@ -171,6 +202,12 @@ def run_live_loop(cfg: AppConfig, window: int) -> None:
     """
     tf_minutes = parse_tf_minutes(cfg.timeframe)
     cycles = 0
+
+    events = StructuredEventLogger(
+        cfg.symbol,
+        enabled=cfg.alerting.structured_logs,
+        webhook_url=cfg.alerting.webhook_url,
+    )
 
     click.echo(f"Live paper trading started: {cfg.symbol} {cfg.timeframe}")
     click.echo(f"Market hours: {MARKET_OPEN_H}:{MARKET_OPEN_M:02d}–"
@@ -185,6 +222,10 @@ def run_live_loop(cfg: AppConfig, window: int) -> None:
                 wait = (nxt - now).total_seconds()
                 click.echo(f"[{now:%H:%M:%S} ET] Market closed. "
                            f"Sleeping until {nxt:%Y-%m-%d %H:%M} ET ({wait / 3600:.1f}h)")
+                events.market_closed(
+                    next_open=nxt.isoformat(),
+                    wait_hours=wait / 3600,
+                )
                 time.sleep(wait)
                 continue
 
@@ -199,8 +240,13 @@ def run_live_loop(cfg: AppConfig, window: int) -> None:
             if wait > 0:
                 time.sleep(wait)
 
-            _run_paper_cycle(cfg, window)
+            try:
+                _run_paper_cycle(cfg, window, events=events)
+            except Exception as exc:
+                logger.exception("Cycle error")
+                events.error(message=str(exc), detail=type(exc).__name__)
             cycles += 1
 
     except KeyboardInterrupt:
         click.echo(f"\n\nShutting down after {cycles} cycle(s). Goodbye.")
+        events.shutdown(cycles=cycles)
