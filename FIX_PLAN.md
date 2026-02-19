@@ -97,78 +97,91 @@
 
 ---
 
-## Phase G — Short-side + tuning (next)
+## Phase G — Short-side + tuning ✅
 
-Priority-ordered based on backtest analysis of Phase F real-data run.
+| Commit | Description | Status |
+|--------|-------------|--------|
+| 30 | WEAK-2 atomic rule (no demand — shooting star + LOW vol) | ✅ Done |
+| 31 | CLIMAX-SELL-1 atomic rule (selling climax at top) | ✅ Done |
+| 32 | ENTRY-SHORT-1 setup (CLIMAX-SELL-1 → WEAK-1/WEAK-2, OR-completers) | ✅ Done |
+| 33 | Risk engine short-side support (stop above, bidirectional sizing) | ✅ Done |
+| 34 | Backtest runner short-side tests (fill, PnL, stop-out, journal) | ✅ Done |
+| 35 | Low-liquidity volume guard (config-driven, pipeline early-return) | ✅ Done |
+| 36 | Golden fixtures for CLIMAX-SELL-1, WEAK-2, ENTRY-SHORT-1, volume guard | ✅ Done |
 
-### Commit 30: WEAK-2 atomic rule (no demand — shooting star + LOW vol)
-- **Scope:** Register WEAK-2 in YAML + implement in rule engine.
-- **Rationale:** Required building block for short-side setups.
-- **Files:** `VPA_RULE_REGISTRY.yaml`, `rule_engine.py`, `test_rule_engine.py`
-- **Acceptance criteria:** WEAK-2 fires on shooting star with LOW volume. Traceability updated.
-- **Tests:** 6+ tests covering fire/no-fire/config-driven thresholds.
-
-### Commit 31: CLIMAX-SELL-1 atomic rule (selling climax at top)
-- **Scope:** Register + implement climactic selling detection.
-- **Rationale:** Core signal for identifying distribution tops.
-- **Files:** `VPA_RULE_REGISTRY.yaml`, `rule_engine.py`, `test_rule_engine.py`
-- **Acceptance criteria:** Ultra-high volume + wide spread at TOP location.
-- **Tests:** 6+ tests.
-
-### Commit 32: ENTRY-SHORT-1 setup (post-distribution markdown)
-- **Scope:** Register + implement first short-side setup.
-- **Rationale:** System currently cannot profit in downtrends.
-- **Sequence:** CLIMAX-SELL-1 → WEAK-1 (or WEAK-2) within window.
-- **Files:** `VPA_RULE_REGISTRY.yaml`, `setup_composer.py`, `test_setup_composer.py`
-- **Acceptance criteria:** Setup matches short sequence, risk engine computes short stops.
-- **Tests:** 8+ tests covering sequence, expiration, invalidation.
-
-### Commit 33: Risk engine short-side support
-- **Scope:** Extend risk engine to compute stop-above for short entries.
-- **Files:** `risk_engine.py`, `test_risk_engine.py`
-- **Acceptance criteria:** Short TradeIntents have stop above entry, correct sizing.
-- **Tests:** 4+ tests for short stop placement and sizing.
-
-### Commit 34: Backtest runner short-side support
-- **Scope:** Extend backtest to handle short positions (entry, stop, exit).
-- **Files:** `backtest/runner.py`, `test_backtest.py`
-- **Acceptance criteria:** Short trades track correctly with negative PnL on adverse moves.
-- **Tests:** 4+ tests for short trade lifecycle.
-
-### Commit 35: Low-liquidity guard
-- **Scope:** Add configurable minimum-volume filter to rule engine.
-- **Rationale:** Phase F backtest losses all occurred during holiday thin trading.
-- **Files:** `vpa.default.json`, `vpa_config.schema.json`, `vpa_config.py`, `pipeline.py`
-- **Acceptance criteria:** Pipeline skips evaluation when avg volume < threshold.
-- **Tests:** Pipeline returns no signals when volume guard trips.
-
-### Commit 36: Golden fixtures for short-side + volume guard
-- **Scope:** Add golden fixtures for ENTRY-SHORT-1 and low-liquidity scenarios.
-- **Files:** `docs/config/fixtures/vpa/`
-- **Acceptance criteria:** Fixtures replay successfully in `test_golden_fixtures.py`.
+### Phase G checkpoint: PASSED ✅
+- ENTRY-SHORT-1 operational (post-distribution short)
+- Backtest proves both long and short trade lifecycle
+- Low-liquidity guard blocks holiday thin-trading false signals
+- Symmetric setup invalidation (bullish kills shorts, anomaly/avoidance kills longs)
+- 375 tests passing, 9 golden fixtures
 
 ---
 
-## Phase G checkpoint criteria (review before Phase H)
-- At least 1 short-side setup operational
-- Backtest shows both long and short trades
-- Low-liquidity guard prevents holiday-period false signals
-- Ready to discuss: MTF support, additional rules, stop optimization
+## Phase H — Multi-timeframe + stop optimization (next)
+
+CTX-2 dominant alignment currently returns UNKNOWN because there is no
+higher-timeframe trend to compare against. This phase adds daily bar
+ingestion, a daily trend overlay, and ATR-based stop optimization.
+
+### Commit 37: Daily bar storage + ingestion
+- **Scope:** Extend BarStore and AlpacaBarFetcher to handle daily bars alongside intraday.
+- **Rationale:** Daily trend is required for CTX-2 dominant alignment.
+- **Files:** `bar_store.py`, `alpaca_fetcher.py`, `cli/main.py` (ingest --timeframe 1d)
+- **Acceptance criteria:** `vpa ingest --timeframe 1d` fetches and stores daily bars.
+- **Tests:** Bar store handles multiple timeframes; fetcher returns daily bars.
+
+### Commit 38: Daily trend analyzer
+- **Scope:** Compute daily trend (direction + strength) from daily bars.
+- **Rationale:** Feed into dominant alignment for CTX-2.
+- **Files:** `context_engine.py`, new `daily_context.py` or extend existing.
+- **Acceptance criteria:** Given 20+ daily bars, returns Trend + TrendStrength.
+- **Tests:** Daily trend detection with known bar sequences.
+
+### Commit 39: CTX-2 dominant alignment from daily trend
+- **Scope:** Wire daily trend into ContextSnapshot.dominant_alignment.
+- **Rationale:** CTX-2 REDUCE_RISK policy finally activates in live/backtest.
+- **Files:** `pipeline.py`, `context_engine.py`, `backtest/runner.py`
+- **Acceptance criteria:** When 15m trade direction opposes daily trend, alignment=AGAINST.
+- **Tests:** Pipeline produces AGAINST/WITH alignment; risk reduction triggers.
+
+### Commit 40: ATR computation + config
+- **Scope:** Add Average True Range (ATR) computation from bar history.
+- **Rationale:** ATR-based stops adapt to volatility instead of using static bar high/low.
+- **Files:** new `atr.py` or extend `feature_engine.py`, `vpa.default.json`
+- **Acceptance criteria:** ATR(14) computed from bars; value available to risk engine.
+- **Tests:** ATR calculation against known values.
+
+### Commit 41: ATR-based stop placement
+- **Scope:** Risk engine uses ATR multiplier for stop distance when configured.
+- **Rationale:** Static stops (bar high/low) are too tight in volatile markets.
+- **Files:** `risk_engine.py`, `vpa.default.json`, `vpa_config.schema.json`
+- **Acceptance criteria:** Stop = entry ± (ATR × multiplier). Fallback to bar-based if ATR unavailable.
+- **Tests:** ATR stop vs bar-based stop; sizing adjusts to wider stop.
+
+### Commit 42: Per-symbol config support
+- **Scope:** Allow `config-SPY.yaml`, `config-AAPL.yaml` overrides.
+- **Rationale:** Different symbols need different volume thresholds and ATR multipliers.
+- **Files:** `vpa_config.py`, `cli/main.py`
+- **Acceptance criteria:** CLI `--symbol SPY` loads symbol-specific overrides if present.
+- **Tests:** Symbol override merges correctly with defaults.
+
+### Phase H checkpoint criteria
+- CTX-2 dominant alignment computed from daily trend (not UNKNOWN)
+- Backtest with daily overlay shows fewer counter-trend losses
+- ATR-based stops reduce stop-out rate vs bar-based stops
+- Per-symbol config available for multi-ticker deployment
 
 ---
 
 ## Future phases (not yet planned in detail)
-
-### Phase H — Multi-timeframe + stop optimization
-- Daily/hourly dominant alignment for CTX-2 (currently returns UNKNOWN)
-- ATR-based stop tuning (wider for volatile symbols)
-- Per-symbol config support (`config-SPY.yaml`, `config-AAPL.yaml`)
 
 ### Phase I — Extended rule coverage
 - TREND-VAL-1, TREND-ANOM-1, TREND-ANOM-2 (trend-level rules)
 - TEST-SUP-2 (failed test), TEST-DEM-1 (demand test)
 - CONF-2 (two-level agreement)
 - AVOID-TRAP-1, AVOID-COUNTER-1
+- ENTRY-SHORT-2 (reversal short from selling climax)
 
 ### Phase J — Production readiness
 - Dockerfile + docker-compose for per-symbol containers

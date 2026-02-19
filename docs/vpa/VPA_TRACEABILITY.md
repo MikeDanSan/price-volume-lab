@@ -1,7 +1,7 @@
 # VPA_TRACEABILITY.md
 **Project:** VPA — Canonical System  
 **Purpose:** Ensure every canonical rule/setup is implemented and tested exactly as specified (Couling 2013).  
-**Last updated:** 2026-02-18 (Phase F complete)
+**Last updated:** 2026-02-18 (Phase G complete)
 
 ## 1) Non-negotiables
 - Canonical source: Anna Couling (2013).
@@ -62,10 +62,11 @@
 | ENTRY-LONG-1 | Post-accumulation breakout | VPA_RULE_REGISTRY.yaml | `src/vpa_core/setup_composer.py::SetupComposer` | `tests/test_setup_composer.py` (8 tests) | **OK** | Sequence: TEST-SUP-1 → VAL-1 within window_X bars. State machine with expiration and invalidation. |
 | ENTRY-LONG-2 | Reversal long (hammer + confirm) | VPA_RULE_REGISTRY.yaml | `src/vpa_core/setup_composer.py::SetupComposer` | `tests/test_setup_composer.py` (9 tests) | **OK** | Sequence: STR-1 → CONF-1 within window_X bars. Stop below hammer wick. AVOID-NEWS-1 invalidates. |
 
+| ENTRY-SHORT-1 | Post-distribution markdown | VPA_RULE_REGISTRY.yaml | `src/vpa_core/setup_composer.py::SetupComposer` | `tests/test_setup_composer.py` (13 tests) | **OK** | Sequence: CLIMAX-SELL-1 → WEAK-1 or WEAK-2 within window_X bars. OR-matching completers. Bullish validation/strength invalidates. |
+
 ### 3.5 Setups defined in docs but NOT yet implemented
 | ID | Name | Spec Source | Status | Notes |
 |----|------|-------------|--------|-------|
-| ENTRY-SHORT-1 | Post-distribution markdown | VPA_ACTIONABLE_RULES §10 | **MISSING** | Planned Phase G (Commit 32). |
 | ENTRY-SHORT-2 | Reversal short (selling climax) | VPA_ACTIONABLE_RULES §10 | **MISSING** | Planned Phase I. |
 
 ### 3.6 EXTRA signals (in code, not in registry)
@@ -95,4 +96,4 @@ If any ID is **MISSING/PARTIAL/DRIFT/EXTRA**, create a TODO with:
 - tests required
 - smallest commit plan
 
-**Current summary: 15 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, WEAK-2, CLIMAX-SELL-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, CTX-2, CTX-3, ENTRY-LONG-1, ENTRY-LONG-2), 0 PARTIAL, 11 MISSING, 0 DRIFT, 0 EXTRA.**
+**Current summary: 16 OK (VAL-1, ANOM-1, ANOM-2, STR-1, WEAK-1, WEAK-2, CLIMAX-SELL-1, CONF-1, AVOID-NEWS-1, TEST-SUP-1, CTX-1, CTX-2, CTX-3, ENTRY-LONG-1, ENTRY-LONG-2, ENTRY-SHORT-1), 0 PARTIAL, 10 MISSING, 0 DRIFT, 0 EXTRA.**
