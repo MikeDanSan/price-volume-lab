@@ -144,6 +144,13 @@ class VolumeGuardConfig:
 
 
 @dataclass(frozen=True)
+class AtrConfig:
+    period: int = 14
+    stop_multiplier: float = 1.5
+    enabled: bool = False
+
+
+@dataclass(frozen=True)
 class VPAConfig:
     """Top-level VPA configuration. All thresholds for the determinism layer."""
     version: str
@@ -158,6 +165,7 @@ class VPAConfig:
     candle_patterns: CandlePatternsConfig
     risk: RiskConfig
     volume_guard: VolumeGuardConfig = VolumeGuardConfig()
+    atr: AtrConfig = AtrConfig()
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +263,11 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
         volume_guard=VolumeGuardConfig(
             enabled=data.get("volume_guard", {}).get("enabled", True),
             min_avg_volume=data.get("volume_guard", {}).get("min_avg_volume", 10_000),
+        ),
+        atr=AtrConfig(
+            period=data.get("atr", {}).get("period", 14),
+            stop_multiplier=data.get("atr", {}).get("stop_multiplier", 1.5),
+            enabled=data.get("atr", {}).get("enabled", False),
         ),
     )
 

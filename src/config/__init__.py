@@ -14,6 +14,7 @@ from config.loader import (
     load_config,
 )
 from config.vpa_config import (
+    AtrConfig,
     CostsConfig,
     GatesConfig,
     RiskConfig,
@@ -39,6 +40,7 @@ __all__ = [
     "JournalConfig",
     "load_config",
     # VPA config (JSON + schema)
+    "AtrConfig",
     "CostsConfig",
     "GatesConfig",
     "RiskConfig",

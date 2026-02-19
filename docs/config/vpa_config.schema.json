@@ -146,6 +146,16 @@
           "enabled": { "type": "boolean" },
           "min_avg_volume": { "type": "integer", "minimum": 0 }
         }
+      },
+
+      "atr": {
+        "type": "object",
+        "required": ["period", "stop_multiplier", "enabled"],
+        "properties": {
+          "period": { "type": "integer", "minimum": 2, "maximum": 100 },
+          "stop_multiplier": { "type": "number", "minimum": 0.5, "maximum": 10.0 },
+          "enabled": { "type": "boolean" }
+        }
       }
     }
   }

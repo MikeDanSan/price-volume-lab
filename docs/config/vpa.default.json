@@ -52,6 +52,11 @@
     "volume_guard": {
       "enabled": true,
       "min_avg_volume": 10000
+    },
+    "atr": {
+      "period": 14,
+      "stop_multiplier": 1.5,
+      "enabled": false
     }
   }
   
