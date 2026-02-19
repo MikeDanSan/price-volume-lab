@@ -1,6 +1,7 @@
 """Integration tests: synthetic bars through the full VPA pipeline."""
 
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -51,11 +52,11 @@ def _account() -> AccountState:
 
 
 def _baseline_bar(i: int) -> Bar:
-    """Produce a neutral up bar with avg volume ~1000 and spread ~1.0."""
+    """Produce a neutral up bar with avg volume ~100_000 and spread ~1.0."""
     ts = BASE_TS + timedelta(minutes=15 * i)
     return Bar(
         timestamp=ts, open=100.0, high=102.0, low=99.0,
-        close=101.0, volume=1000, symbol="TEST",
+        close=101.0, volume=100_000, symbol="TEST",
     )
 
 
@@ -78,7 +79,7 @@ class TestPartialPipeline:
         signal_bar = Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
             open=100.0, high=108.0, low=99.0,
-            close=107.0, volume=2500, symbol="TEST",
+            close=107.0, volume=250_000, symbol="TEST",
         )
         bars.append(signal_bar)
 
@@ -108,7 +109,7 @@ class TestPartialPipeline:
         signal_bar = Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
             open=100.0, high=108.0, low=99.0,
-            close=107.0, volume=100, symbol="TEST",
+            close=107.0, volume=1_000, symbol="TEST",
         )
         bars.append(signal_bar)
 
@@ -169,7 +170,7 @@ class TestFullPipeline:
         signal_bar = Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
             open=100.0, high=108.0, low=99.0,
-            close=107.0, volume=2500, symbol="TEST",
+            close=107.0, volume=250_000, symbol="TEST",
         )
         bars.append(signal_bar)
 
@@ -198,7 +199,7 @@ class TestFullPipeline:
         signal_bar = Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
             open=100.0, high=108.0, low=99.0,
-            close=107.0, volume=2500, symbol="TEST",
+            close=107.0, volume=250_000, symbol="TEST",
         )
         bars.append(signal_bar)
 
@@ -216,7 +217,7 @@ class TestFullPipeline:
         signal_bar = Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
             open=100.0, high=108.0, low=99.0,
-            close=107.0, volume=2500, symbol="TEST",
+            close=107.0, volume=250_000, symbol="TEST",
         )
         bars.append(signal_bar)
 
@@ -261,10 +262,103 @@ class TestMultiBarSequence:
         bars = _baseline_bars(20)
         bars.append(Bar(
             timestamp=BASE_TS + timedelta(minutes=15 * 20),
-            open=100.0, high=108.0, low=99.0, close=107.0, volume=2500, symbol="TEST",
+            open=100.0, high=108.0, low=99.0, close=107.0, volume=250_000, symbol="TEST",
         ))
         composer = SetupComposer(cfg)
         result = run_pipeline(bars, bar_index=20, context=_context(),
                               account=_account(), config=cfg, composer=composer)
         with pytest.raises(AttributeError):
             result.bar_index = 99  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# 4. Low-liquidity volume guard
+# ---------------------------------------------------------------------------
+
+
+def _low_volume_bar(i: int) -> Bar:
+    """Produce a bar with very low volume (simulates holiday thin trading)."""
+    ts = BASE_TS + timedelta(minutes=15 * i)
+    return Bar(
+        timestamp=ts, open=100.0, high=102.0, low=99.0,
+        close=101.0, volume=50, symbol="TEST",
+    )
+
+
+def _cfg_with_volume_guard(tmp_path: Path, *, enabled: bool, min_avg: int) -> VPAConfig:
+    """Load config with a specific volume_guard setting."""
+    import json
+    from config.vpa_config import DEFAULT_CONFIG_PATH
+    with open(DEFAULT_CONFIG_PATH) as f:
+        data = json.load(f)
+    data["volume_guard"] = {"enabled": enabled, "min_avg_volume": min_avg}
+    p = tmp_path / "vol_guard_cfg.json"
+    p.write_text(json.dumps(data))
+    return load_vpa_config(config_path=p)
+
+
+class TestVolumeGuard:
+    """Pipeline skips evaluation when average volume < min_avg_volume."""
+
+    def test_low_volume_blocks_signals(self, tmp_path: Path) -> None:
+        """Thin-volume bars should produce no signals even if shape triggers rules."""
+        cfg = _cfg_with_volume_guard(tmp_path, enabled=True, min_avg=10_000)
+        bars = [_low_volume_bar(i) for i in range(20)]
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=125, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        result = run_pipeline(bars, bar_index=20, context=_context(),
+                              account=_account(), config=cfg, composer=composer)
+        assert result.features is not None
+        assert result.signals == []
+        assert result.intents == []
+
+    def test_normal_volume_passes(self, tmp_path: Path) -> None:
+        """Bars above the threshold produce signals normally."""
+        cfg = _cfg_with_volume_guard(tmp_path, enabled=True, min_avg=10_000)
+        bars = _baseline_bars(20)
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=250_000, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        result = run_pipeline(bars, bar_index=20, context=_context(),
+                              account=_account(), config=cfg, composer=composer)
+        assert len(result.signals) >= 1
+
+    def test_guard_disabled_allows_low_volume(self, tmp_path: Path) -> None:
+        """When guard is disabled, low volume bars still get evaluated."""
+        cfg = _cfg_with_volume_guard(tmp_path, enabled=False, min_avg=10_000)
+        bars = [_low_volume_bar(i) for i in range(20)]
+        bars.append(Bar(
+            timestamp=BASE_TS + timedelta(minutes=15 * 20),
+            open=100.0, high=108.0, low=99.0,
+            close=107.0, volume=125, symbol="TEST",
+        ))
+        composer = SetupComposer(cfg)
+        result = run_pipeline(bars, bar_index=20, context=_context(),
+                              account=_account(), config=cfg, composer=composer)
+        assert len(result.signals) >= 1
+
+    def test_features_still_computed_when_guarded(self, tmp_path: Path) -> None:
+        """Even when guard trips, features are computed (for journaling/diagnostics)."""
+        cfg = _cfg_with_volume_guard(tmp_path, enabled=True, min_avg=10_000)
+        bars = [_low_volume_bar(i) for i in range(20)]
+        composer = SetupComposer(cfg)
+        result = run_pipeline(bars, bar_index=19, context=_context(),
+                              account=_account(), config=cfg, composer=composer)
+        assert result.features is not None
+        assert result.features.vol_rel > 0
+
+    def test_guard_threshold_boundary(self, tmp_path: Path) -> None:
+        """Average volume exactly at threshold should pass."""
+        cfg = _cfg_with_volume_guard(tmp_path, enabled=True, min_avg=100_000)
+        bars = _baseline_bars(20)
+        composer = SetupComposer(cfg)
+        result = run_pipeline(bars, bar_index=19, context=_context(),
+                              account=_account(), config=cfg, composer=composer)
+        assert result.gate_result is not None

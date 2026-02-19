@@ -137,6 +137,15 @@
           "countertrend_multiplier": { "type": "number", "minimum": 0, "maximum": 1 },
           "daily_loss_limit_pct": { "type": "number", "minimum": 0, "maximum": 0.2 }
         }
+      },
+
+      "volume_guard": {
+        "type": "object",
+        "required": ["enabled", "min_avg_volume"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "min_avg_volume": { "type": "integer", "minimum": 0 }
+        }
       }
     }
   }

@@ -21,7 +21,7 @@ def cfg() -> VPAConfig:
 
 
 def _bar(i: int, *, open_: float = 100.0, high: float = 102.0,
-         low: float = 99.0, close: float = 101.0, volume: int = 1000) -> Bar:
+         low: float = 99.0, close: float = 101.0, volume: int = 100_000) -> Bar:
     return Bar(
         timestamp=BASE_TS + timedelta(minutes=15 * i),
         open=open_, high=high, low=low,
@@ -38,7 +38,7 @@ def _uptrend_bars(count: int = 20) -> list[Bar]:
     """Gently rising bars to establish TOP location and build volume/spread SMA."""
     return [
         _bar(i, open_=100 + i * 0.5, high=101 + i * 0.5,
-             low=99.5 + i * 0.5, close=100.5 + i * 0.5, volume=1000)
+             low=99.5 + i * 0.5, close=100.5 + i * 0.5, volume=100_000)
         for i in range(count)
     ]
 
@@ -52,10 +52,10 @@ def _short_setup_bars() -> list[Bar]:
     Bar 23: exit bar (end-of-data close=107.0).
     """
     bars = _uptrend_bars(20)
-    bars.append(_bar(20, open_=110.0, high=118.0, low=109.8, close=110.2, volume=2500))
-    bars.append(_bar(21, open_=110.0, high=117.0, low=109.9, close=110.1, volume=1000))
-    bars.append(_bar(22, open_=109.5, high=110.0, low=107.5, close=108.0, volume=1000))
-    bars.append(_bar(23, open_=108.0, high=108.5, low=106.0, close=107.0, volume=1000))
+    bars.append(_bar(20, open_=110.0, high=118.0, low=109.8, close=110.2, volume=250_000))
+    bars.append(_bar(21, open_=110.0, high=117.0, low=109.9, close=110.1, volume=100_000))
+    bars.append(_bar(22, open_=109.5, high=110.0, low=107.5, close=108.0, volume=100_000))
+    bars.append(_bar(23, open_=108.0, high=108.5, low=106.0, close=107.0, volume=100_000))
     return bars
 
 
@@ -94,9 +94,9 @@ class TestSignalFlow:
     def _bars_with_val_1(self) -> list[Bar]:
         """20 baseline bars + 1 wide-up ultra-high-volume bar (VAL-1) + 2 continuation bars."""
         bars = _baseline_bars(20)
-        bars.append(_bar(20, open_=100.0, high=108.0, low=99.0, close=107.0, volume=2500))
-        bars.append(_bar(21, open_=107.0, high=110.0, low=106.0, close=109.0, volume=1500))
-        bars.append(_bar(22, open_=109.0, high=112.0, low=108.0, close=111.0, volume=1200))
+        bars.append(_bar(20, open_=100.0, high=108.0, low=99.0, close=107.0, volume=250_000))
+        bars.append(_bar(21, open_=107.0, high=110.0, low=106.0, close=109.0, volume=150_000))
+        bars.append(_bar(22, open_=109.0, high=112.0, low=108.0, close=111.0, volume=120_000))
         return bars
 
     def test_val_1_detected(self, cfg: VPAConfig) -> None:
@@ -253,7 +253,7 @@ class TestShortStopOut:
     def _stopout_bars(self) -> list[Bar]:
         """Same as _short_setup_bars but bar 23 spikes above the stop (118.0)."""
         bars = _short_setup_bars()
-        bars[-1] = _bar(23, open_=108.0, high=119.0, low=107.0, close=118.5, volume=1500)
+        bars[-1] = _bar(23, open_=108.0, high=119.0, low=107.0, close=118.5, volume=150_000)
         return bars
 
     def test_stop_triggered_on_high_spike(self, cfg: VPAConfig) -> None:

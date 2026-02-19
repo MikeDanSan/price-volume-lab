@@ -138,6 +138,12 @@ class RiskConfig:
 
 
 @dataclass(frozen=True)
+class VolumeGuardConfig:
+    enabled: bool = True
+    min_avg_volume: int = 10_000
+
+
+@dataclass(frozen=True)
 class VPAConfig:
     """Top-level VPA configuration. All thresholds for the determinism layer."""
     version: str
@@ -151,6 +157,7 @@ class VPAConfig:
     slippage: SlippageConfig
     candle_patterns: CandlePatternsConfig
     risk: RiskConfig
+    volume_guard: VolumeGuardConfig = VolumeGuardConfig()
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +251,10 @@ def _build_config(data: dict[str, Any]) -> VPAConfig:
             max_concurrent_positions=risk_raw["max_concurrent_positions"],
             countertrend_multiplier=risk_raw["countertrend_multiplier"],
             daily_loss_limit_pct=risk_raw.get("daily_loss_limit_pct"),
+        ),
+        volume_guard=VolumeGuardConfig(
+            enabled=data.get("volume_guard", {}).get("enabled", True),
+            min_avg_volume=data.get("volume_guard", {}).get("min_avg_volume", 10_000),
         ),
     )
 

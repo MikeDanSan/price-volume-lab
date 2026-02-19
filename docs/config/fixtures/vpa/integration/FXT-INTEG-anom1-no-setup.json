@@ -6,7 +6,8 @@
   "description": "ANOM-1 fires but no setup completes (single anomaly bar, no sequence).",
   "configOverrides": {
     "vol": { "avg_window_N": 5 },
-    "spread": { "avg_window_M": 5 }
+    "spread": { "avg_window_M": 5 },
+    "volume_guard": { "enabled": false, "min_avg_volume": 0 }
   },
   "inputs": {
     "bars": [

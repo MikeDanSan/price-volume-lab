@@ -19,6 +19,7 @@ from vpa_core.contracts import (
 )
 from vpa_core.context_gates import GateResult, apply_gates
 from vpa_core.feature_engine import extract_features
+from vpa_core.relative_volume import average_volume
 from vpa_core.risk_engine import AccountState, evaluate_risk
 from vpa_core.rule_engine import evaluate_rules
 from vpa_core.setup_composer import SetupComposer, SetupMatch
@@ -86,6 +87,11 @@ def run_pipeline(
         return PipelineResult(bar_index=bar_index)
 
     features = extract_features(bars, config, tf)
+
+    if config.volume_guard.enabled:
+        avg_vol = average_volume(bars, lookback=config.vol.avg_window_N)
+        if avg_vol < config.volume_guard.min_avg_volume:
+            return PipelineResult(bar_index=bar_index, features=features)
 
     signals = evaluate_rules(features, config)
 

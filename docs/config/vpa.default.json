@@ -48,6 +48,10 @@
       "max_concurrent_positions": 1,
       "countertrend_multiplier": 0.5,
       "daily_loss_limit_pct": 0.02
+    },
+    "volume_guard": {
+      "enabled": true,
+      "min_avg_volume": 10000
     }
   }
   
