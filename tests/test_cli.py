@@ -135,3 +135,66 @@ data:
     result = runner.invoke(cli, ["--config", str(config_path), "scan"])
     assert result.exit_code == 0
     assert "Not enough bars" in result.output or "No bars" in result.output
+
+
+# ---------------------------------------------------------------------------
+# vpa health
+# ---------------------------------------------------------------------------
+
+
+class TestHealth:
+    """Tests for the health check command."""
+
+    def test_healthy_with_bars(self, tmp_config: Path) -> None:
+        """All checks pass when config is valid and bars exist."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--config", str(tmp_config), "health"])
+        assert result.exit_code == 0
+        assert "HEALTHY" in result.output
+        assert "[OK] config" in result.output
+        assert "[OK] vpa_config" in result.output
+        assert "[OK] bars" in result.output
+
+    def test_unhealthy_no_bars(self, tmp_path: Path) -> None:
+        """bars check fails when store is empty."""
+        db_path = tmp_path / "empty.db"
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            f"""
+symbol: SPY
+timeframe: "15m"
+data:
+  source: alpaca
+  bar_store_path: "{db_path}"
+execution:
+  state_path: "{tmp_path / 'state.db'}"
+  initial_cash: 100000
+journal:
+  path: "{tmp_path / 'journal.jsonl'}"
+  echo_stdout: false
+"""
+        )
+        BarStore(str(db_path))
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--config", str(config_path), "health"])
+        assert result.exit_code == 1
+        assert "UNHEALTHY" in result.output
+        assert "[FAIL] bars" in result.output
+        assert "[OK] config" in result.output
+
+    def test_unhealthy_bad_config(self, tmp_path: Path) -> None:
+        """config check fails on invalid YAML."""
+        config_path = tmp_path / "bad.yaml"
+        config_path.write_text("not: [valid: yaml: config")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--config", str(config_path), "health"])
+        assert result.exit_code == 1
+        assert "UNHEALTHY" in result.output
+        assert "[FAIL] config" in result.output
+
+    def test_health_shows_bar_counts(self, tmp_config: Path) -> None:
+        """Output includes bar count details."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--config", str(tmp_config), "health"])
+        assert "15m bars" in result.output
+        assert "daily bars" in result.output

@@ -284,5 +284,58 @@ def status(ctx: click.Context, fills: int) -> None:
         click.echo("\nNo fills yet.")
 
 
+# ---------- vpa health ----------
+
+
+@cli.command()
+@click.pass_context
+def health(ctx: click.Context) -> None:
+    """Check system health: config, VPA config, DB access, bar data.
+
+    Exit code 0 = healthy, 1 = unhealthy. Designed for Docker HEALTHCHECK.
+    """
+    checks: list[tuple[str, bool, str]] = []
+
+    try:
+        cfg = load_config(ctx.obj["config_path"])
+        checks.append(("config", True, f"loaded ({cfg.symbol} {cfg.timeframe})"))
+    except Exception as e:
+        checks.append(("config", False, str(e)))
+        _print_health(checks)
+        raise SystemExit(1)
+
+    try:
+        from config.vpa_config import load_vpa_config
+        vpa_cfg = load_vpa_config(symbol=cfg.symbol)
+        rule_count = len(vpa_cfg.vol.thresholds.__dataclass_fields__)
+        checks.append(("vpa_config", True, f"validated (symbol={cfg.symbol})"))
+    except Exception as e:
+        checks.append(("vpa_config", False, str(e)))
+
+    try:
+        from data.bar_store import BarStore
+        store = BarStore(cfg.data.bar_store_path)
+        bar_count = store.count_bars(cfg.symbol, cfg.timeframe)
+        daily_count = store.count_bars(cfg.symbol, "1d")
+        if bar_count > 0:
+            checks.append(("bars", True, f"{bar_count} {cfg.timeframe} bars, {daily_count} daily bars"))
+        else:
+            checks.append(("bars", False, f"no {cfg.timeframe} bars for {cfg.symbol}"))
+    except Exception as e:
+        checks.append(("bars", False, str(e)))
+
+    _print_health(checks)
+    healthy = all(ok for _, ok, _ in checks)
+    raise SystemExit(0 if healthy else 1)
+
+
+def _print_health(checks: list[tuple[str, bool, str]]) -> None:
+    for name, ok, detail in checks:
+        status = "OK" if ok else "FAIL"
+        click.echo(f"  [{status}] {name}: {detail}")
+    healthy = all(ok for _, ok, _ in checks)
+    click.echo(f"\nHealth: {'HEALTHY' if healthy else 'UNHEALTHY'}")
+
+
 if __name__ == "__main__":
     cli()

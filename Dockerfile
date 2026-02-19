@@ -41,5 +41,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 VOLUME ["/app/data"]
 
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["vpa", "health"]
+
 ENTRYPOINT ["vpa"]
 CMD ["--help"]
