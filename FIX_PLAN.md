@@ -160,12 +160,27 @@
 
 ---
 
-## Future phases (not yet planned in detail)
+## Phase J — Production readiness
 
-### Phase J — Production readiness
-- Dockerfile + docker-compose for per-symbol containers
-- Health checks, alerting, dashboarding
-- PAPER_TO_LIVE.md checklist completion
+|| Commit | Description | Status |
+||--------|-------------|--------|
+|| 51 | Dockerfile + .dockerignore (slim Python 3.12, `vpa` CLI entrypoint) | ✅ Done |
+|| 52 | docker-compose for per-symbol containers (SPY + QQQ template) | |
+|| 53 | Health check CLI command + Docker HEALTHCHECK | |
+|| 54 | Structured JSON logging + alerting hooks | |
+|| 55 | Kill switch + max daily loss safety limits | |
+|| 56 | Phase J checkpoint: PAPER_TO_LIVE.md update + compliance | |
+
+### Phase J checkpoint criteria
+- `docker build` + `docker compose up` works for multi-symbol deployment
+- Health checks detect unhealthy containers (DB missing, config invalid)
+- Structured JSON log events for signal/trade/error (foundation for Grafana/Loki)
+- Kill switch + daily loss limit enforce safety before any real-money path
+- PAPER_TO_LIVE.md Phase 1 checklist items marked complete
+
+---
+
+## Future phases (not yet planned in detail)
 
 ### Phase K — Remaining rules (optional)
 - VAL-2 (single-bar validation, small progress)

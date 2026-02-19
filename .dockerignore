@@ -1,0 +1,38 @@
+# Version control
+.git
+.gitignore
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# IDE
+.vscode/
+.cursor/
+*.swp
+*.swo
+
+# Runtime data (mounted as volumes, not baked into image)
+data/
+*.db
+*.sqlite
+*.jsonl
+
+# Secrets
+.env
+
+# Tests (not needed in production image)
+tests/
+
+# Docs (not needed in production image)
+docs/vpa-ck/
+agent-transcripts/
+
+# Scripts (dev-only)
+scripts/
