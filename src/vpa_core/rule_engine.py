@@ -20,6 +20,8 @@ Canonical rules implemented:
     CONF-1     — Positive response (confirmation candle)
     AVOID-NEWS-1 — Long-legged doji on low volume (manipulation/stand-aside)
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
+    TEST-SUP-2 — Failed test of supply (high-vol = supply still present)
+    TEST-DEM-1 — Test of demand (low-vol push higher closes near open = no demand)
 """
 
 from __future__ import annotations
@@ -540,6 +542,102 @@ def detect_test_sup_1(features: CandleFeatures, config: VPAConfig) -> SignalEven
 
 
 # ---------------------------------------------------------------------------
+# TEST-SUP-2 — Failed test of supply (high volume = supply still present)
+# Canonical: VPA_ACTIONABLE_RULES §6 — TEST-SUP setup bar but HIGH/ULTRA vol
+# ---------------------------------------------------------------------------
+
+
+def detect_test_sup_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect TEST-SUP-2: failed supply test — supply still present.
+
+    Conditions (from VPA_ACTIONABLE_RULES §6):
+        - volState in {HIGH, ULTRA_HIGH}  (supply still present)
+        - spreadState in {NARROW, NORMAL}  (same bar shape as TEST-SUP-1)
+
+    Couling: on a failed test, expect insiders to take the market back
+    into congestion to flush selling pressure, then test again.
+
+    Requires CTX-1 gate (congestion/trend context must be known).
+    """
+    if features.vol_state not in (VolumeState.HIGH, VolumeState.ULTRA_HIGH):
+        return None
+    if features.spread_state not in (SpreadState.NARROW, SpreadState.NORMAL):
+        return None
+
+    return SignalEvent(
+        id="TEST-SUP-2",
+        name="FailedTestOfSupply_SupplyStillPresent",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.TEST,
+        direction_bias="BEARISH_OR_WAIT",
+        priority=1,
+        evidence={
+            "spread_state": features.spread_state.value,
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+            "spread_rel": features.spread_rel,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# TEST-DEM-1 — Test of demand (post-distribution, no demand confirmation)
+# Canonical: VPA_ACTIONABLE_RULES §6 — pushed higher, closes near open, LOW vol
+# ---------------------------------------------------------------------------
+
+
+def detect_test_dem_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect TEST-DEM-1: demand test pass — no demand returning.
+
+    Conditions (from VPA_ACTIONABLE_RULES §6):
+        - range > 0
+        - spread / range <= body_ratio_max  (close near open)
+        - upper_wick > lower_wick  (market was pushed higher)
+        - volState == LOW  (no demand backing the push)
+
+    Uses shooting_star.body_ratio_max for the "close near open" threshold.
+
+    Couling: market pushed higher but closes back near open with very
+    low volume — safe to start moving the market lower, and fast.
+
+    Requires CTX-1 gate (distribution/trend context must be known).
+    """
+    rng = features.range
+    if rng <= 0:
+        return None
+
+    if features.vol_state != VolumeState.LOW:
+        return None
+
+    body_ratio = features.spread / rng
+    if body_ratio > config.candle_patterns.shooting_star.body_ratio_max:
+        return None
+
+    if features.upper_wick <= features.lower_wick:
+        return None
+
+    return SignalEvent(
+        id="TEST-DEM-1",
+        name="TestOfDemand_NoDemand",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.TEST,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={
+            "body_ratio": round(body_ratio, 4),
+            "upper_wick": features.upper_wick,
+            "lower_wick": features.lower_wick,
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -554,6 +652,8 @@ _RULE_DETECTORS = [
     detect_conf_1,
     detect_avoid_news_1,
     detect_test_sup_1,
+    detect_test_sup_2,
+    detect_test_dem_1,
 ]
 
 

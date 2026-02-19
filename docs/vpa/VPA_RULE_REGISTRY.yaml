@@ -235,6 +235,52 @@ rules:
     tests_required:
       - "FXT-AVOID-NEWS-1-basic"
 
+  - id: "TEST-SUP-2"
+    type: "atomic_rule"
+    class: "TEST"
+    direction_bias: "BEARISH_OR_WAIT"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "shared_parameters"
+    conditions:
+      all:
+        - "volState in {HIGH, ULTRA_HIGH}"
+        - "spreadState in {NARROW, NORMAL}"
+    emits:
+      signal_event: "SUPPLY_TEST_FAIL_RETURN_TO_RANGE"
+    notes: >
+      Failed test of supply: same bar shape as TEST-SUP-1 but high volume
+      means supply is still present. Couling: expect insiders take market
+      back into congestion to flush selling pressure, then test again.
+    tests_required:
+      - "FXT-TEST-SUP-2-basic"
+
+  - id: "TEST-DEM-1"
+    type: "atomic_rule"
+    class: "TEST"
+    direction_bias: "BEARISH"
+    scope:
+      timeframes: ["any"]
+      markets: ["any"]
+    gates_required: ["CTX-1"]
+    parameters_ref: "candle_patterns.shooting_star"
+    conditions:
+      all:
+        - "range > 0"
+        - "spread / range <= shooting_star.body_ratio_max"
+        - "upper_wick > lower_wick"
+        - "volState == LOW"
+    emits:
+      signal_event: "DEMAND_REMOVED_TEST_PASS"
+    notes: >
+      Test of demand: market pushed higher but closes back near open on
+      very low volume. Couling: safe to start moving market lower, fast.
+      Post-distribution signal confirming no buying interest returning.
+    tests_required:
+      - "FXT-TEST-DEM-1-basic"
+
 setups:
   - id: "ENTRY-LONG-1"
     type: "setup"

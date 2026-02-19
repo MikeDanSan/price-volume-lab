@@ -17,7 +17,7 @@ from vpa_core.contracts import (
     SpreadState,
     VolumeState,
 )
-from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_sup_1, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules
+from vpa_core.rule_engine import detect_anom_1, detect_anom_2, detect_avoid_news_1, detect_climax_sell_1, detect_conf_1, detect_str_1, detect_test_dem_1, detect_test_sup_1, detect_test_sup_2, detect_val_1, detect_weak_1, detect_weak_2, evaluate_rules
 
 
 TS = datetime(2026, 2, 17, 14, 30, tzinfo=timezone.utc)
@@ -768,6 +768,176 @@ class TestTESTSUP1:
 
 
 # ---------------------------------------------------------------------------
+# TEST-SUP-2: high volume + narrow/normal spread = failed supply test
+# ---------------------------------------------------------------------------
+
+
+class TestTESTSUP2:
+    """FXT-TEST-SUP-2-basic equivalent."""
+
+    def test_fires_on_high_vol_narrow_spread(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        signal = detect_test_sup_2(f, cfg)
+        assert signal is not None
+        assert signal.id == "TEST-SUP-2"
+        assert signal.signal_class == SignalClass.TEST
+        assert signal.direction_bias == "BEARISH_OR_WAIT"
+        assert signal.requires_context_gate is True
+
+    def test_fires_on_ultra_high_vol_normal_spread(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.ULTRA_HIGH, spread_state=SpreadState.NORMAL)
+        signal = detect_test_sup_2(f, cfg)
+        assert signal is not None
+        assert signal.id == "TEST-SUP-2"
+
+    def test_fires_on_high_vol_normal_spread(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NORMAL)
+        signal = detect_test_sup_2(f, cfg)
+        assert signal is not None
+
+    def test_no_fire_low_volume(self, cfg: VPAConfig) -> None:
+        """Low volume = supply removed (TEST-SUP-1 territory, not failed test)."""
+        f = _features(vol_state=VolumeState.LOW, spread_state=SpreadState.NARROW)
+        assert detect_test_sup_2(f, cfg) is None
+
+    def test_no_fire_average_volume(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.AVERAGE, spread_state=SpreadState.NARROW)
+        assert detect_test_sup_2(f, cfg) is None
+
+    def test_no_fire_wide_spread(self, cfg: VPAConfig) -> None:
+        """Wide spread + high volume = validation (VAL-1 territory), not failed test."""
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.WIDE)
+        assert detect_test_sup_2(f, cfg) is None
+
+    def test_direction_agnostic(self, cfg: VPAConfig) -> None:
+        """Failed test fires on both up and down bars."""
+        f_up = _features(candle_type=CandleType.UP, vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        f_dn = _features(candle_type=CandleType.DOWN, vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        assert detect_test_sup_2(f_up, cfg) is not None
+        assert detect_test_sup_2(f_dn, cfg) is not None
+
+    def test_evidence_populated(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW, vol_rel=1.5, spread_rel=0.6)
+        signal = detect_test_sup_2(f, cfg)
+        assert signal is not None
+        assert signal.evidence["vol_state"] == "HIGH"
+        assert signal.evidence["spread_state"] == "NARROW"
+        assert signal.evidence["vol_rel"] == 1.5
+        assert signal.evidence["spread_rel"] == 0.6
+
+    def test_cofires_with_anom_2(self, cfg: VPAConfig) -> None:
+        """TEST-SUP-2 and ANOM-2 have identical conditions — both fire, different interpretations."""
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "TEST-SUP-2" in ids
+        assert "ANOM-2" in ids
+
+    def test_mutual_exclusion_with_test_sup_1(self, cfg: VPAConfig) -> None:
+        """TEST-SUP-1 requires LOW vol; TEST-SUP-2 requires HIGH/ULTRA. Cannot co-fire."""
+        f_pass = _features(vol_state=VolumeState.LOW, spread_state=SpreadState.NARROW)
+        f_fail = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        pass_ids = {s.id for s in evaluate_rules(f_pass, cfg)}
+        fail_ids = {s.id for s in evaluate_rules(f_fail, cfg)}
+        assert "TEST-SUP-1" in pass_ids
+        assert "TEST-SUP-2" not in pass_ids
+        assert "TEST-SUP-2" in fail_ids
+        assert "TEST-SUP-1" not in fail_ids
+
+
+# ---------------------------------------------------------------------------
+# TEST-DEM-1: low volume + close near open + pushed higher = no demand
+# ---------------------------------------------------------------------------
+
+
+class TestTESTDEM1:
+    """FXT-TEST-DEM-1-basic equivalent."""
+
+    def test_fires_on_push_higher_close_near_open_low_vol(self, cfg: VPAConfig) -> None:
+        """Classic demand test: upper wick > lower wick, small body, LOW vol."""
+        f = _features(
+            upper_wick=5.0, lower_wick=2.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        signal = detect_test_dem_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "TEST-DEM-1"
+        assert signal.signal_class == SignalClass.TEST
+        assert signal.direction_bias == "BEARISH"
+        assert signal.requires_context_gate is True
+
+    def test_no_fire_high_volume(self, cfg: VPAConfig) -> None:
+        """High volume means demand IS present — not a demand test."""
+        f = _features(
+            upper_wick=5.0, lower_wick=2.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.HIGH,
+        )
+        assert detect_test_dem_1(f, cfg) is None
+
+    def test_no_fire_average_volume(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=5.0, lower_wick=2.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.AVERAGE,
+        )
+        assert detect_test_dem_1(f, cfg) is None
+
+    def test_no_fire_large_body(self, cfg: VPAConfig) -> None:
+        """Large body = close NOT near open; not a demand test."""
+        f = _features(
+            upper_wick=2.0, lower_wick=1.0, spread_val=7.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_test_dem_1(f, cfg) is None
+
+    def test_no_fire_lower_wick_dominant(self, cfg: VPAConfig) -> None:
+        """Lower wick > upper wick = market pushed DOWN, not higher."""
+        f = _features(
+            upper_wick=2.0, lower_wick=5.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_test_dem_1(f, cfg) is None
+
+    def test_no_fire_equal_wicks(self, cfg: VPAConfig) -> None:
+        """Equal wicks = no directional push; needs upper > lower."""
+        f = _features(
+            upper_wick=4.0, lower_wick=4.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_test_dem_1(f, cfg) is None
+
+    def test_no_fire_zero_range(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=0.0, lower_wick=0.0, spread_val=0.0, range_val=0.0,
+            vol_state=VolumeState.LOW,
+        )
+        assert detect_test_dem_1(f, cfg) is None
+
+    def test_evidence_populated(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=6.0, lower_wick=1.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.LOW, vol_rel=0.4,
+        )
+        signal = detect_test_dem_1(f, cfg)
+        assert signal is not None
+        assert signal.evidence["body_ratio"] == 0.2
+        assert signal.evidence["upper_wick"] == 6.0
+        assert signal.evidence["lower_wick"] == 1.0
+        assert signal.evidence["vol_state"] == "LOW"
+        assert signal.evidence["vol_rel"] == 0.4
+
+    def test_on_down_bar(self, cfg: VPAConfig) -> None:
+        """Down bar with push higher then close near open = still valid demand test."""
+        f = _features(
+            candle_type=CandleType.DOWN,
+            upper_wick=5.0, lower_wick=2.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        signal = detect_test_dem_1(f, cfg)
+        assert signal is not None
+        assert signal.id == "TEST-DEM-1"
+
+
+# ---------------------------------------------------------------------------
 # evaluate_rules orchestrator
 # ---------------------------------------------------------------------------
 
@@ -835,8 +1005,23 @@ class TestEvaluateRules:
     def test_anom_2_collected(self, cfg: VPAConfig) -> None:
         f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
         signals = evaluate_rules(f, cfg)
-        assert len(signals) == 1
-        assert signals[0].id == "ANOM-2"
+        ids = {s.id for s in signals}
+        assert "ANOM-2" in ids
+
+    def test_test_sup_2_collected(self, cfg: VPAConfig) -> None:
+        f = _features(vol_state=VolumeState.HIGH, spread_state=SpreadState.NARROW)
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "TEST-SUP-2" in ids
+
+    def test_test_dem_1_collected(self, cfg: VPAConfig) -> None:
+        f = _features(
+            upper_wick=5.0, lower_wick=2.0, spread_val=2.0, range_val=10.0,
+            vol_state=VolumeState.LOW,
+        )
+        signals = evaluate_rules(f, cfg)
+        ids = {s.id for s in signals}
+        assert "TEST-DEM-1" in ids
 
     def test_test_sup_1_and_anom_1_mutual_exclusion(self, cfg: VPAConfig) -> None:
         """TEST-SUP-1 requires NARROW/NORMAL spread; ANOM-1 requires WIDE. Cannot co-fire."""
