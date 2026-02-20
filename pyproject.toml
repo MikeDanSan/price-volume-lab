@@ -26,6 +26,7 @@ vpa = "cli.main:cli"
 data = ["alpaca-py", "pandas", "pytz"]
 backtest = ["pandas"]
 dev = ["pytest", "pytest-cov"]
+dashboard = ["streamlit"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
