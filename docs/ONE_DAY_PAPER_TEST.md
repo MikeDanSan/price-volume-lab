@@ -41,11 +41,16 @@ docker compose build
 
 ### Step 3 -- Ingest historical bars (needed for VPA context)
 
-Each symbol needs ~60 days of 15-minute bars so VPA has enough context to detect setups.
+Each symbol needs ~60 days of 15-minute bars so VPA has enough context to detect setups, plus daily bars for multi-timeframe (dominant trend) analysis.
 
 ```bash
+# Intraday bars (15m)
 docker compose run --rm vpa-spy ingest --days 60
 docker compose run --rm vpa-qqq ingest --days 60
+
+# Daily bars (required for dominant trend / CTX-2 gate)
+docker compose run --rm vpa-spy ingest --timeframe 1d --days 365
+docker compose run --rm vpa-qqq ingest --timeframe 1d --days 365
 ```
 
 ### Step 4 -- Start live paper trading
@@ -176,7 +181,8 @@ This stops and removes both containers. Your data is preserved in the `data/` di
 | Action | Command |
 |--------|---------|
 | Build image | `docker compose build` |
-| Ingest bars | `docker compose run --rm vpa-spy ingest --days 60` |
+| Ingest 15m bars | `docker compose run --rm vpa-spy ingest --days 60` |
+| Ingest daily bars | `docker compose run --rm vpa-spy ingest --timeframe 1d --days 365` |
 | Start trading | `docker compose up -d` |
 | Check status | `docker compose ps` |
 | Follow logs | `docker compose logs -f` |
@@ -208,4 +214,5 @@ When reviewing the day's results, pay attention to:
 | "No bars in store" | Re-run the ingest step: `docker compose run --rm vpa-spy ingest --days 60` |
 | Health check failing | `docker compose run --rm vpa-spy health` to see the error |
 | SQLite locked | Only one process per symbol should write to the same state DB. Stop containers before querying with `sqlite3` if you get lock errors |
+| "Dominant: UNKNOWN" on every bar | Daily bars missing. Run `docker compose run --rm vpa-spy ingest --timeframe 1d --days 365` |
 | No `.env` file | `cp .env.example .env` and add your Alpaca paper-trading keys |

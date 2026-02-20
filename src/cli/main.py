@@ -284,6 +284,183 @@ def status(ctx: click.Context, fills: int) -> None:
         click.echo("\nNo fills yet.")
 
 
+# ---------- vpa replay ----------
+
+
+@cli.command()
+@click.option("--window", default=50, help="Context window size.")
+@click.option("--last", "last_n", default=None, type=int, help="Only replay the last N bars (default: all bars in store).")
+@click.option("--sensitivity", is_flag=True, default=False, help="Include threshold proximity report (near-misses).")
+@click.pass_context
+def replay(ctx: click.Context, window: int, last_n: int | None, sensitivity: bool) -> None:
+    """Replay stored bars through the pipeline and diagnose setup lifecycle.
+
+    Shows which trigger signals opened candidates, whether they expired
+    (missing completer), were invalidated, or completed into setups.
+    Also reports gate blocks and a signal frequency summary.
+
+    Use --sensitivity to see how close bars were to triggering rules
+    that didn't fire (threshold proximity analysis).
+    """
+    cfg = load_config(ctx.obj["config_path"])
+    from collections import Counter
+
+    from cli.daily_helper import load_daily_context
+    from config.vpa_config import load_vpa_config
+    from data.bar_store import BarStore
+    from vpa_core.context_engine import analyze as analyze_context
+    from vpa_core.pipeline import run_pipeline
+    from vpa_core.risk_engine import AccountState
+    from vpa_core.sensitivity import NearMiss, compute_near_misses
+    from vpa_core.setup_composer import SetupComposer
+
+    store = BarStore(cfg.data.bar_store_path)
+    bars = store.get_bars(cfg.symbol, cfg.timeframe)
+    if not bars or len(bars) < 2:
+        click.echo("Not enough bars in store. Run 'vpa ingest' first.")
+        return
+
+    if last_n is not None:
+        bars = bars[-last_n:]
+
+    vpa_cfg = load_vpa_config(symbol=cfg.symbol)
+    composer = SetupComposer(vpa_cfg, record_events=True)
+    daily_ctx = load_daily_context(store, cfg.symbol, vpa_cfg)
+    account = AccountState(equity=100_000.0)
+
+    signal_counter: Counter[str] = Counter()
+    gate_blocks: Counter[str] = Counter()
+    near_miss_counter: Counter[str] = Counter()
+    near_miss_examples: list[tuple[int, NearMiss]] = []
+    intent_count = 0
+    bars_evaluated = 0
+
+    for i in range(window, len(bars)):
+        bar_slice = bars[i - window : i + 1]
+        context = analyze_context(bar_slice, vpa_cfg, cfg.timeframe)
+        result = run_pipeline(
+            bar_slice,
+            bar_index=i,
+            context=context,
+            account=account,
+            config=vpa_cfg,
+            composer=composer,
+            tf=cfg.timeframe,
+            daily_context=daily_ctx,
+        )
+        for sig in result.signals:
+            signal_counter[sig.id] += 1
+        if result.gate_result:
+            for sig in result.gate_result.blocked:
+                key = f"{sig.id}@{sig.ts.isoformat()}"
+                reason = result.gate_result.block_reasons.get(key, "unknown")
+                gate_blocks[reason] += 1
+        intent_count += len(result.intents)
+        bars_evaluated += 1
+
+        if sensitivity and result.features:
+            misses = compute_near_misses(result.features, vpa_cfg)
+            for m in misses:
+                near_miss_counter[m.condition] += 1
+                if len(near_miss_examples) < 50:
+                    near_miss_examples.append((i, m))
+
+    # --- Output report ---
+    click.echo(f"=== VPA Replay: {cfg.symbol} {cfg.timeframe} ===")
+    click.echo(f"Bars evaluated   : {bars_evaluated}")
+    click.echo(f"Period           : {bars[window].timestamp.isoformat()} → {bars[-1].timestamp.isoformat()}")
+    if daily_ctx:
+        click.echo(f"Daily context    : trend={daily_ctx.trend.value}  strength={daily_ctx.trend_strength.value}")
+    else:
+        click.echo("Daily context    : N/A (no daily bars)")
+    click.echo("")
+
+    # Signal frequency
+    click.echo("--- Signal Frequency ---")
+    if signal_counter:
+        for sig_id, count in signal_counter.most_common():
+            click.echo(f"  {sig_id:25s} {count:>4d} times")
+    else:
+        click.echo("  (none)")
+    click.echo("")
+
+    # Gate blocks
+    click.echo("--- Gate Blocks ---")
+    if gate_blocks:
+        for reason, count in gate_blocks.most_common():
+            click.echo(f"  {reason:40s} {count:>4d}")
+    else:
+        click.echo("  (none)")
+    click.echo("")
+
+    # Setup candidate lifecycle
+    events = composer.event_log
+    click.echo("--- Setup Candidate Lifecycle ---")
+    if not events:
+        click.echo("  No setup candidates were opened during the replay period.")
+    else:
+        opened = [e for e in events if e.event == "opened"]
+        completed = [e for e in events if e.event == "completed"]
+        expired = [e for e in events if e.event == "expired"]
+        invalidated = [e for e in events if e.event == "invalidated"]
+
+        click.echo(f"  Opened       : {len(opened)}")
+        click.echo(f"  Completed    : {len(completed)}")
+        click.echo(f"  Expired      : {len(expired)}")
+        click.echo(f"  Invalidated  : {len(invalidated)}")
+        click.echo("")
+
+        for evt in events:
+            bar_ts = bars[evt.bar_index].timestamp if evt.bar_index < len(bars) else "?"
+            if evt.event == "opened":
+                needed = " | ".join(evt.completer_needed)
+                click.echo(f"  [{evt.event:11s}] bar {evt.bar_index} ({bar_ts}) "
+                           f"{evt.setup_id} ({evt.direction}) "
+                           f"trigger={evt.trigger_signal}  needs=[{needed}]")
+            elif evt.event == "completed":
+                click.echo(f"  [{evt.event:11s}] bar {evt.bar_index} ({bar_ts}) "
+                           f"{evt.setup_id} ({evt.direction}) "
+                           f"trigger={evt.trigger_signal}  got={evt.completer_got}")
+            elif evt.event == "expired":
+                needed = " | ".join(evt.completer_needed)
+                click.echo(f"  [{evt.event:11s}] bar {evt.bar_index} ({bar_ts}) "
+                           f"{evt.setup_id} ({evt.direction}) "
+                           f"trigger={evt.trigger_signal}  missing=[{needed}]")
+            elif evt.event == "invalidated":
+                click.echo(f"  [{evt.event:11s}] bar {evt.bar_index} ({bar_ts}) "
+                           f"{evt.setup_id} ({evt.direction}) "
+                           f"trigger={evt.trigger_signal}")
+
+    # Sensitivity report
+    if sensitivity:
+        click.echo("")
+        click.echo("--- Threshold Sensitivity (Near-Misses) ---")
+        if near_miss_counter:
+            click.echo("  Frequency of near-miss conditions across all bars:")
+            for cond, count in near_miss_counter.most_common(15):
+                click.echo(f"    {cond:55s} {count:>4d} bars")
+            click.echo("")
+            click.echo("  Sample near-misses (first occurrences):")
+            shown = set()
+            for bar_idx, m in near_miss_examples:
+                key = m.condition
+                if key in shown:
+                    continue
+                shown.add(key)
+                bar_ts = bars[bar_idx].timestamp if bar_idx < len(bars) else "?"
+                direction = "below" if m.gap_pct < 0 else "above"
+                click.echo(f"    bar {bar_idx} ({bar_ts})")
+                click.echo(f"      {m.rule_id:15s} {m.condition}")
+                click.echo(f"      actual={m.actual:.4f}  threshold={m.threshold:.4f}  "
+                           f"({abs(m.gap_pct):.1%} {direction})")
+        else:
+            click.echo("  No near-misses detected (all conditions were either clearly met or clearly missed).")
+
+    click.echo("")
+    click.echo(f"Trade intents    : {intent_count}")
+    click.echo("===")
+
+
 # ---------- vpa health ----------
 
 

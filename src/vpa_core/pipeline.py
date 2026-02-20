@@ -48,6 +48,7 @@ class PipelineResult:
     gate_result: GateResult | None = None
     matches: list[SetupMatch] = field(default_factory=list)
     intents: list[TradeIntent] = field(default_factory=list)
+    daily_context: ContextSnapshot | None = None
 
 
 def run_pipeline(
@@ -139,4 +140,5 @@ def run_pipeline(
         gate_result=gate_result,
         matches=matches,
         intents=intents,
+        daily_context=daily_context,
     )

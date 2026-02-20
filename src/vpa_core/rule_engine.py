@@ -11,12 +11,14 @@ No TradePlan, no orders, no sizing. That belongs to later stages.
 
 Canonical rules implemented:
     VAL-1      — Single-bar validation (bullish drive)
+    VAL-2      — Single-bar validation (small progress: narrow up + low vol)
     ANOM-1     — "Big result, little effort" trap-up anomaly
     ANOM-2     — "Big effort, little result" absorption/weakness
     STR-1      — Hammer (strength: selling absorbed, reversal candidate)
     WEAK-1     — Shooting star (weakness: demand exhaustion)
     WEAK-2     — Shooting star + LOW volume (no demand)
     CLIMAX-SELL-1 — Selling climax bar (deep upper wick + high vol at top)
+    CLIMAX-SELL-2 — Upper-wick selling pressure (body color irrelevant)
     CONF-1     — Positive response (confirmation candle)
     AVOID-NEWS-1 — Long-legged doji on low volume (manipulation/stand-aside)
     TEST-SUP-1 — Test of supply (low-vol quiet bar = selling pressure removed)
@@ -75,6 +77,50 @@ def detect_val_1(features: CandleFeatures, config: VPAConfig) -> SignalEvent | N
     return SignalEvent(
         id="VAL-1",
         name="SingleBarValidation_BullishDrive",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.VALIDATION,
+        direction_bias="BULLISH",
+        priority=1,
+        evidence={
+            "spread_state": features.spread_state.value,
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+            "spread_rel": features.spread_rel,
+        },
+        requires_context_gate=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# VAL-2 — Single-bar validation (small progress)
+# Registry: close > open, spreadState == NARROW, volState == LOW
+# ---------------------------------------------------------------------------
+
+
+def detect_val_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect VAL-2: narrow up bar on low volume = validated small progress.
+
+    Conditions (from VPA_ACTIONABLE_RULES §3):
+        - close > open  (candle_type == UP)
+        - spreadState == NARROW
+        - volState == LOW
+
+    Couling: small result should require small effort; volume still
+    validates the move. Neutral-to-bullish soft signal.
+
+    No context gate required for validation signals.
+    """
+    if features.candle_type != CandleType.UP:
+        return None
+    if features.spread_state != SpreadState.NARROW:
+        return None
+    if features.vol_state != VolumeState.LOW:
+        return None
+
+    return SignalEvent(
+        id="VAL-2",
+        name="SingleBarValidation_SmallProgress",
         tf=features.tf,
         ts=features.ts,
         signal_class=SignalClass.VALIDATION,
@@ -341,6 +387,68 @@ def detect_climax_sell_1(features: CandleFeatures, config: VPAConfig) -> SignalE
     return SignalEvent(
         id="CLIMAX-SELL-1",
         name="SellingClimax_Distribution",
+        tf=features.tf,
+        ts=features.ts,
+        signal_class=SignalClass.WEAKNESS,
+        direction_bias="BEARISH",
+        priority=1,
+        evidence={
+            "upper_wick_ratio": round(upper_ratio, 4),
+            "body_ratio": round(body_ratio, 4),
+            "lower_wick_ratio": round(lower_ratio, 4),
+            "vol_state": features.vol_state.value,
+            "vol_rel": features.vol_rel,
+        },
+        requires_context_gate=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLIMAX-SELL-2 — Upper-wick repetition emphasis (body color irrelevant)
+# Canonical: VPA_ACTIONABLE_RULES §7 — wick height + high volume matters
+# ---------------------------------------------------------------------------
+
+
+def detect_climax_sell_2(features: CandleFeatures, config: VPAConfig) -> SignalEvent | None:
+    """Detect CLIMAX-SELL-2: significant upper wick on high volume, body color ignored.
+
+    Conditions (from VPA_ACTIONABLE_RULES §7):
+        - range > 0
+        - upper_wick / range >= shooting_star.upper_wick_ratio_min
+        - volState in {HIGH, ULTRA_HIGH}
+        - Body size and candle direction are NOT constrained
+
+    Relaxed version of CLIMAX-SELL-1: Couling notes body color is
+    unimportant for selling pressure identification — wick height +
+    repetition + high volume is what matters.
+
+    Mutually exclusive with CLIMAX-SELL-1: if the bar already qualifies
+    as a strict shooting-star climax, this softer variant does not fire.
+
+    Requires CTX-1 gate (trend location / distribution context needed).
+    """
+    rng = features.range
+    if rng <= 0:
+        return None
+
+    if features.vol_state not in (VolumeState.HIGH, VolumeState.ULTRA_HIGH):
+        return None
+
+    ss = config.candle_patterns.shooting_star
+    upper_ratio = features.upper_wick / rng
+
+    if upper_ratio < ss.upper_wick_ratio_min:
+        return None
+
+    body_ratio = features.spread / rng
+    lower_ratio = features.lower_wick / rng
+
+    if body_ratio <= ss.body_ratio_max and lower_ratio <= ss.lower_wick_ratio_max:
+        return None
+
+    return SignalEvent(
+        id="CLIMAX-SELL-2",
+        name="SellingPressure_UpperWickEmphasis",
         tf=features.tf,
         ts=features.ts,
         signal_class=SignalClass.WEAKNESS,
@@ -651,12 +759,14 @@ def detect_test_dem_1(features: CandleFeatures, config: VPAConfig) -> SignalEven
 
 _RULE_DETECTORS = [
     detect_val_1,
+    detect_val_2,
     detect_anom_1,
     detect_anom_2,
     detect_str_1,
     detect_weak_1,
     detect_weak_2,
     detect_climax_sell_1,
+    detect_climax_sell_2,
     detect_conf_1,
     detect_avoid_news_1,
     detect_test_sup_1,

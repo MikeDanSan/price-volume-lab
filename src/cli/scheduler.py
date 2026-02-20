@@ -100,6 +100,41 @@ def _ingest_latest(cfg: AppConfig) -> int:
     return len(result.bars)
 
 
+DAILY_BARS_MIN = 10
+
+
+def _ensure_daily_bars(cfg: AppConfig) -> int:
+    """Ensure sufficient daily bars exist for multi-timeframe analysis.
+
+    If fewer than DAILY_BARS_MIN daily bars are in the store, fetches
+    up to 365 days of daily history from Alpaca. Called once at live-loop
+    startup so CTX-2 (dominant alignment) can resolve.
+
+    Returns the total number of daily bars in the store after refresh.
+    """
+    from data import get_alpaca_fetcher
+    from data.bar_store import BarStore
+
+    store = BarStore(cfg.data.bar_store_path)
+    existing = store.count_bars(cfg.symbol, "1d")
+    if existing >= DAILY_BARS_MIN:
+        return existing
+
+    logger.info(
+        "Only %d daily bars for %s (need %d). Auto-fetching daily history...",
+        existing, cfg.symbol, DAILY_BARS_MIN,
+    )
+    fetcher = get_alpaca_fetcher(cfg.data.api_key, cfg.data.api_secret)
+    end = datetime.now(ET)
+    start = end - timedelta(days=365)
+    result = fetcher.fetch(cfg.symbol, "1d", start=start, end=end)
+    if result.bars:
+        store.write_bars(cfg.symbol, "1d", result.bars)
+    total = store.count_bars(cfg.symbol, "1d")
+    logger.info("Daily bars for %s: %d total after refresh.", cfg.symbol, total)
+    return total
+
+
 def _run_paper_cycle(
     cfg: AppConfig,
     window: int,
@@ -224,6 +259,12 @@ def run_live_loop(cfg: AppConfig, window: int) -> None:
         max_daily_loss_pct=cfg.execution.max_daily_loss_pct,
         initial_cash=cfg.execution.initial_cash,
     )
+
+    daily_count = _ensure_daily_bars(cfg)
+    if daily_count >= DAILY_BARS_MIN:
+        click.echo(f"Daily bars: {daily_count} (multi-timeframe analysis enabled)")
+    else:
+        click.echo(f"Daily bars: {daily_count} (< {DAILY_BARS_MIN}; dominant alignment will be UNKNOWN)")
 
     click.echo(f"Live paper trading started: {cfg.symbol} {cfg.timeframe}")
     click.echo(f"Market hours: {MARKET_OPEN_H}:{MARKET_OPEN_M:02d}–"

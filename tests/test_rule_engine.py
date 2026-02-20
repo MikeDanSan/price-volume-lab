@@ -964,8 +964,8 @@ class TestEvaluateRules:
     def test_test_sup_1_collected(self, cfg: VPAConfig) -> None:
         f = _features(vol_state=VolumeState.LOW, spread_state=SpreadState.NARROW)
         signals = evaluate_rules(f, cfg)
-        assert len(signals) == 1
-        assert signals[0].id == "TEST-SUP-1"
+        ids = {s.id for s in signals}
+        assert "TEST-SUP-1" in ids
 
     def test_mutual_exclusion_val_anom(self, cfg: VPAConfig) -> None:
         """VAL-1 and ANOM-1 cannot both fire on the same bar (volume can't be HIGH and LOW)."""

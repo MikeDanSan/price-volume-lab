@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 from config.vpa_config import VPAConfig
 from vpa_core.contracts import ContextSnapshot, SignalClass, SignalEvent
@@ -29,6 +30,18 @@ class SetupState(str, Enum):
     READY = "READY"
     INVALIDATED = "INVALIDATED"
     EXPIRED = "EXPIRED"
+
+
+@dataclass(frozen=True)
+class CandidateEvent:
+    """Lifecycle event for a setup candidate (used by replay/diagnose)."""
+    event: Literal["opened", "completed", "expired", "invalidated"]
+    setup_id: str
+    direction: str
+    bar_index: int
+    trigger_signal: str
+    completer_needed: list[str]
+    completer_got: str | None = None
 
 
 @dataclass
@@ -62,10 +75,12 @@ class SetupComposer:
     Returns any setups that completed on this bar.
     """
 
-    def __init__(self, config: VPAConfig) -> None:
+    def __init__(self, config: VPAConfig, *, record_events: bool = False) -> None:
         self._config = config
         self._window_x = config.setup.window_X
         self._candidates: list[SetupCandidate] = []
+        self._record_events = record_events
+        self.event_log: list[CandidateEvent] = []
 
     def process_signals(
         self,
@@ -129,6 +144,15 @@ class SetupComposer:
                             started_at_bar=bar_index,
                             expires_at_bar=bar_index + self._window_x,
                         ))
+                        if self._record_events:
+                            self.event_log.append(CandidateEvent(
+                                event="opened",
+                                setup_id=setup_id,
+                                direction=defn["direction"],
+                                bar_index=bar_index,
+                                trigger_signal=sig.id,
+                                completer_needed=defn["completers"],
+                            ))
 
     def _check_completions(self, signals: list[SignalEvent], bar_index: int) -> list[SetupMatch]:
         """Check if any active candidates complete with this bar's signals."""
@@ -151,6 +175,17 @@ class SetupComposer:
                         matched_at_bar=bar_index,
                         tf=sig.tf,
                     ))
+                    if self._record_events:
+                        trigger_sig = candidate.signals[0].id if candidate.signals else "?"
+                        self.event_log.append(CandidateEvent(
+                            event="completed",
+                            setup_id=candidate.setup_id,
+                            direction=candidate.direction,
+                            bar_index=bar_index,
+                            trigger_signal=trigger_sig,
+                            completer_needed=completers,
+                            completer_got=sig.id,
+                        ))
                     break
         return matches
 
@@ -159,6 +194,17 @@ class SetupComposer:
         for candidate in self._candidates:
             if candidate.state == SetupState.CANDIDATE and bar_index > candidate.expires_at_bar:
                 candidate.state = SetupState.EXPIRED
+                if self._record_events:
+                    defn = self._SETUP_DEFS.get(candidate.setup_id, {})
+                    trigger_sig = candidate.signals[0].id if candidate.signals else "?"
+                    self.event_log.append(CandidateEvent(
+                        event="expired",
+                        setup_id=candidate.setup_id,
+                        direction=candidate.direction,
+                        bar_index=bar_index,
+                        trigger_signal=trigger_sig,
+                        completer_needed=defn.get("completers", []),
+                    ))
         self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
 
     _HARD_AVOIDANCE = {"AVOID-NEWS-1"}
@@ -185,10 +231,24 @@ class SetupComposer:
         for candidate in self._candidates:
             if candidate.state != SetupState.CANDIDATE:
                 continue
+            invalidated = False
             if candidate.direction == "LONG" and should_invalidate_longs:
                 candidate.state = SetupState.INVALIDATED
+                invalidated = True
             elif candidate.direction == "SHORT" and should_invalidate_shorts:
                 candidate.state = SetupState.INVALIDATED
+                invalidated = True
+            if invalidated and self._record_events:
+                defn = self._SETUP_DEFS.get(candidate.setup_id, {})
+                trigger_sig = candidate.signals[0].id if candidate.signals else "?"
+                self.event_log.append(CandidateEvent(
+                    event="invalidated",
+                    setup_id=candidate.setup_id,
+                    direction=candidate.direction,
+                    bar_index=candidate.started_at_bar,
+                    trigger_signal=trigger_sig,
+                    completer_needed=defn.get("completers", []),
+                ))
         self._candidates = [c for c in self._candidates if c.state == SetupState.CANDIDATE]
 
     @property

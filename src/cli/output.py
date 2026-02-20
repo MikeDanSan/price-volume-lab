@@ -132,8 +132,11 @@ def format_pipeline_scan(
     lines.append(f"  Volume  : rel {features.vol_rel:.2f}x → {features.vol_state.value}")
     lines.append(f"  Context : trend={context.trend.value}  location={context.trend_location.value}  strength={context.trend_strength.value}")
 
-    if context.dominant_alignment:
-        lines.append(f"  Dominant: {context.dominant_alignment.value}")
+    daily_ctx = result.daily_context
+    if daily_ctx is not None:
+        lines.append(f"  Dominant: daily trend={daily_ctx.trend.value}  strength={daily_ctx.trend_strength.value}")
+    else:
+        lines.append("  Dominant: N/A (no daily bars)")
 
     lines.append("")
 
