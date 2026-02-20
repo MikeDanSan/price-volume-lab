@@ -2,7 +2,7 @@
 # Slim production image with all VPA rules and CLI.
 #
 # Build:
-#   docker build -t vpa-engine .
+#   make build
 #
 # Run (single command):
 #   docker run --env-file .env -v $(pwd)/data:/app/data vpa-engine scan
@@ -20,8 +20,13 @@
 
 FROM python:3.12-slim
 
+ARG VERSION=dev
+ARG GIT_SHA=unknown
+
 LABEL maintainer="vpa-engine"
 LABEL description="Volume Price Analysis engine — deterministic, explainable signals"
+LABEL org.opencontainers.image.version=$VERSION
+LABEL org.opencontainers.image.revision=$GIT_SHA
 
 WORKDIR /app
 
